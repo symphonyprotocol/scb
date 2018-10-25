@@ -2,7 +2,9 @@ package main
 
 // import "fmt"
 // import . "./block"
-import . "./cli"
+
+
+// import . "./cli"
 
 func main(){
 	// tx := block.NewCoinbaseTX("xxx", "i love music")
@@ -12,6 +14,9 @@ func main(){
 	// block.CreateBlockchain("trumpAddress")
 	// block.GetBalance("trumpAddress")
 	// bc.FindUTXO("trumpAddress")
+
+
+
 	cli := CLI{}
 	cli.Run()
 	
