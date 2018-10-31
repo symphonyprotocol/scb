@@ -8,7 +8,7 @@ import "time"
 import "math/big"
 import "fmt"
 import "math"
-import  . "../utils"
+import  . "github.com/symphonyprotocol/scb/utils"
 
 const targetBits = 12
 var maxNonce = math.MaxInt64

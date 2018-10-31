@@ -6,6 +6,7 @@ import "encoding/gob"
 import "log"
 import "encoding/hex"
 import "github.com/symphonyprotocol/sutil/elliptic"
+import "math/big"
 
 // 挖矿奖励金
 const subsidy = 10
@@ -67,7 +68,8 @@ func (tx *Transaction) Sign(privKey elliptic.PrivateKey, prevTXs map[string]Tran
 		txCopy.Vin[inID].PubKey = nil
 
 		
-		s, err := privKey.Sign(rand.Reader, &privKey, txCopy.ID)
+		// s, err := privKey.Sign(rand.Reader, &privKey, txCopy.ID)
+		s, err := privKey.Sign(txCopy.ID)
 		if err != nil {
 			log.Panic(err)
 		}
@@ -94,6 +96,53 @@ func (tx *Transaction) TrimmedCopy() Transaction {
 	txCopy := Transaction{tx.ID, inputs, outputs}
 
 	return txCopy
+}
+
+// Verify verifies signatures of Transaction inputs
+func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
+	if tx.IsCoinbase() {
+		return true
+	}
+
+	for _, vin := range tx.Vin {
+		if prevTXs[hex.EncodeToString(vin.Txid)].ID == nil {
+			log.Panic("ERROR: Previous transaction is not correct")
+		}
+	}
+
+	txCopy := tx.TrimmedCopy()
+
+	for inID, vin := range tx.Vin {
+		prevTx := prevTXs[hex.EncodeToString(vin.Txid)]
+		txCopy.Vin[inID].Signature = nil
+		txCopy.Vin[inID].PubKey = prevTx.Vout[vin.Vout].PubKeyHash
+		txCopy.ID = txCopy.Hash()
+		txCopy.Vin[inID].PubKey = nil
+
+		r := big.Int{}
+		s := big.Int{}
+		sigLen := len(vin.Signature)
+		r.SetBytes(vin.Signature[:(sigLen / 2)])
+		s.SetBytes(vin.Signature[(sigLen / 2):])
+
+		x := big.Int{}
+		y := big.Int{}
+
+		pubkey, err := elliptic.ParsePubKey(vin.PubKey, elliptic.S256())
+		if err != nil{
+			return false
+		}
+		x.SetBytes(pubkey.X.Bytes())
+		y.SetBytes(pubkey.Y.Bytes())
+
+		sig := elliptic.Signature{
+			R: &r,
+			S: &s,
+		}
+		return sig.Verify(txCopy.ID, pubkey)
+	}
+
+	return true
 }
 
 
@@ -125,23 +174,26 @@ func (tx *Transaction) SetID() {
 	tx.ID = hash[:]
 }
 
-// CanUnlockOutputWith checks whether the address initiated the transaction
-func (in *TXInput) CanUnlockOutputWith(unlockingData string) bool {
-	return in.ScriptSig == unlockingData
-}
+// // CanUnlockOutputWith checks whether the address initiated the transaction
+// func (in *TXInput) CanUnlockOutputWith(unlockingData string) bool {
+// 	return in.ScriptSig == unlockingData
+// }
 
-// CanBeUnlockedWith checks if the output can be unlocked with the provided data
-func (out *TXOutput) CanBeUnlockedWith(unlockingData string) bool {
-	return out.ScriptPubKey == unlockingData
-}
+// // CanBeUnlockedWith checks if the output can be unlocked with the provided data
+// func (out *TXOutput) CanBeUnlockedWith(unlockingData string) bool {
+// 	return out.ScriptPubKey == unlockingData
+// }
 
 // NewUTXOTransaction creates a new transaction
-func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transaction {
+func NewUTXOTransaction(from, to string, amount int, bc *Blockchain, privkey []byte) *Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
 
-	acc, validOutputs := bc.FindSpendableOutputs(from, amount)
+	privateKey, publicKey := elliptic.PrivKeyFromBytes(elliptic.S256(), privkey)
+	pubkey := publicKey.SerializeCompressed()
 
+	pubKeyHash := elliptic.HashPubKey(pubkey)
+	acc, validOutputs := bc.FindSpendableOutputs(pubKeyHash, amount)
 	if acc < amount {
 		log.Panic("ERROR: Not enough funds")
 	}
@@ -154,19 +206,19 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain) *Transactio
 		}
 
 		for _, out := range outs {
-			input := TXInput{txID, out, from}
+			input := TXInput{txID, out, nil, pubkey}
 			inputs = append(inputs, input)
 		}
 	}
-
 	// Build a list of outputs
-	outputs = append(outputs, TXOutput{amount, to})
+	outputs = append(outputs, *NewTXOutput(amount, to))
 	if acc > amount {
-		outputs = append(outputs, TXOutput{acc - amount, from}) // a change
+		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // a change
 	}
 
 	tx := Transaction{nil, inputs, outputs}
-	tx.SetID()
-
+	tx.ID = tx.Hash()
+	
+	bc.SignTransaction(&tx, *privateKey)
 	return &tx
 }

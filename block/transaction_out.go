@@ -1,7 +1,9 @@
 package block
 
 import "bytes"
-import "github.com/symphonyprotocol/sutil/base58"
+// import "github.com/symphonyprotocol/sutil/base58"
+import "github.com/symphonyprotocol/sutil/elliptic"
+import "log"
 
 // TXOutput represents a transaction output
 type TXOutput struct {
@@ -13,9 +15,12 @@ type TXOutput struct {
 
 // Lock signs the output
 func (out *TXOutput) Lock(address string) {
-	pubKeyHash, _ := base58.B58decode(address)
-	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
-	out.PubKeyHash = pubKeyHash
+	pubKeyHash, valid := elliptic.LoadAddress(address)
+	if valid{
+		out.PubKeyHash = pubKeyHash
+	}else{
+		log.Panic("address is not valid")
+	}
 }
 
 // IsLockedWithKey checks if the output can be used by the owner of the pubkey
