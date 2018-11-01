@@ -16,5 +16,12 @@ func (cli *CLI) createBlockchain(address string) {
 	bc := block.CreateBlockchain(address)
 	db := bc.GetDB()
 	defer db.Close()
+
+	// 重建utxo集
+	utxoset := block.UTXOSet{
+		Blockchain: bc,
+	}
+	utxoset.Reindex()
+
 	fmt.Println("Done!")
 }

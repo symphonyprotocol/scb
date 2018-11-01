@@ -4,6 +4,7 @@ import "bytes"
 // import "github.com/symphonyprotocol/sutil/base58"
 import "github.com/symphonyprotocol/sutil/elliptic"
 import "log"
+import "encoding/gob"
 
 // TXOutput represents a transaction output
 type TXOutput struct {
@@ -12,6 +13,11 @@ type TXOutput struct {
 	//  hashed public key
 	PubKeyHash []byte
 }
+// TXOutputs collects TXOutput
+type TXOutputs struct {
+	Outputs []TXOutput
+}
+
 
 // Lock signs the output
 func (out *TXOutput) Lock(address string) {
@@ -33,4 +39,30 @@ func NewTXOutput(value int, address string) *TXOutput {
 	txo := &TXOutput{value, nil}
 	txo.Lock(address)
 	return txo
+}
+
+
+// DeserializeOutputs deserializes TXOutputs
+func DeserializeOutputs(data []byte) TXOutputs {
+	var outputs TXOutputs
+
+	dec := gob.NewDecoder(bytes.NewReader(data))
+	err := dec.Decode(&outputs)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return outputs
+}
+
+// Serialize serializes TXOutputs
+func (outs TXOutputs) Serialize() []byte {
+	var buff bytes.Buffer
+
+	enc := gob.NewEncoder(&buff)
+	err := enc.Encode(outs)
+	if err != nil {
+		log.Panic(err)
+	}
+	return buff.Bytes()
 }

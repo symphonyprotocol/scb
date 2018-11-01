@@ -9,7 +9,7 @@ import "github.com/symphonyprotocol/sutil/elliptic"
 import "math/big"
 
 // 挖矿奖励金
-const subsidy = 10
+const subsidy = 100
 
 // Transaction represents a Bitcoin transaction
 type Transaction struct {
@@ -185,7 +185,47 @@ func (tx *Transaction) SetID() {
 // }
 
 // NewUTXOTransaction creates a new transaction
-func NewUTXOTransaction(from, to string, amount int, bc *Blockchain, privkey []byte) *Transaction {
+// func NewUTXOTransaction(from, to string, amount int, bc *Blockchain, privkey []byte) *Transaction {
+// 	var inputs []TXInput
+// 	var outputs []TXOutput
+
+// 	privateKey, publicKey := elliptic.PrivKeyFromBytes(elliptic.S256(), privkey)
+// 	pubkey := publicKey.SerializeCompressed()
+
+// 	pubKeyHash := elliptic.HashPubKey(pubkey)
+// 	acc, validOutputs := bc.FindSpendableOutputs(pubKeyHash, amount)
+// 	if acc < amount {
+// 		log.Panic("ERROR: Not enough funds")
+// 	}
+
+// 	// Build a list of inputs
+// 	for txid, outs := range validOutputs {
+// 		txID, err := hex.DecodeString(txid)
+// 		if err != nil {
+// 			log.Panic(err)
+// 		}
+
+// 		for _, out := range outs {
+// 			input := TXInput{txID, out, nil, pubkey}
+// 			inputs = append(inputs, input)
+// 		}
+// 	}
+// 	// Build a list of outputs
+// 	outputs = append(outputs, *NewTXOutput(amount, to))
+// 	if acc > amount {
+// 		outputs = append(outputs, *NewTXOutput(acc-amount, from)) // a change
+// 	}
+
+// 	tx := Transaction{nil, inputs, outputs}
+// 	tx.ID = tx.Hash()
+	
+// 	bc.SignTransaction(&tx, *privateKey)
+// 	return &tx
+// }
+
+
+// NewUTXOTransaction creates a new transaction
+func NewUTXOTransaction(from, to string, amount int, utxoset *UTXOSet, privkey []byte) *Transaction {
 	var inputs []TXInput
 	var outputs []TXOutput
 
@@ -193,7 +233,9 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain, privkey []b
 	pubkey := publicKey.SerializeCompressed()
 
 	pubKeyHash := elliptic.HashPubKey(pubkey)
-	acc, validOutputs := bc.FindSpendableOutputs(pubKeyHash, amount)
+
+
+	acc, validOutputs := utxoset.FindSpendableOutputs(pubKeyHash, amount)
 	if acc < amount {
 		log.Panic("ERROR: Not enough funds")
 	}
@@ -219,6 +261,6 @@ func NewUTXOTransaction(from, to string, amount int, bc *Blockchain, privkey []b
 	tx := Transaction{nil, inputs, outputs}
 	tx.ID = tx.Hash()
 	
-	bc.SignTransaction(&tx, *privateKey)
+	utxoset.Blockchain.SignTransaction(&tx, *privateKey)
 	return &tx
 }

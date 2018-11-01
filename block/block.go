@@ -88,14 +88,14 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 		data := pow.prepareData(nonce)
 
 		hash = sha256.Sum256(data)
-		fmt.Printf("%s", ".")
+		fmt.Printf("%d->%x\n", nonce, hash)
 		hashInt.SetBytes(hash[:])
 
 		if hashInt.Cmp(pow.target) == -1 {
 			break
 		} else {
 			nonce++
-			time.Sleep(time.Millisecond * 5)
+			time.Sleep(time.Millisecond * 100)
 		}
 	}
 	fmt.Printf("find:%x\n", hash)

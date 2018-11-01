@@ -10,7 +10,7 @@ import (
 	"errors"
 )
 import "github.com/symphonyprotocol/sutil/elliptic"
-import "github.com/symphonyprotocol/sutil/base58"
+// import "github.com/symphonyprotocol/sutil/base58"
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
@@ -106,7 +106,7 @@ func CreateBlockchain(address string) *Blockchain {
 
 	var tip []byte
 	db, err := bolt.Open(dbFile, 0600, nil)
-	defer db.Close()
+	// defer db.Close()
 	if err != nil {
 		log.Panic(err)
 	}
@@ -144,7 +144,7 @@ func CreateBlockchain(address string) *Blockchain {
 }
 
 
-// FindUnspentTransactions returns a list of transactions containing unspent outputs
+// 找到有未花费输出交易
 func (bc *Blockchain) FindUnspentTransactions(pubKeyHash []byte) []Transaction {
 	var unspentTXs []Transaction
 	spentTXOs := make(map[string][]int)
@@ -190,23 +190,67 @@ func (bc *Blockchain) FindUnspentTransactions(pubKeyHash []byte) []Transaction {
 	return unspentTXs
 }
 
+// // 找到一个公钥哈希的未花费输出，然后用来获取余额
+// func (bc *Blockchain) FindUTXO(pubKeyHash []byte) []TXOutput {
+// 	var UTXOs []TXOutput
+// 	unspentTransactions := bc.FindUnspentTransactions(pubKeyHash)
+
+// 	for _, tx := range unspentTransactions {
+// 		for _, out := range tx.Vout {
+// 			if out.IsLockedWithKey(pubKeyHash) {
+// 				UTXOs = append(UTXOs, out)
+// 			}
+// 		}
+// 	}
+
+// 	return UTXOs
+// }
 
 
-// FindUTXO finds and returns all unspent transaction outputs
-func (bc *Blockchain) FindUTXO(pubKeyHash []byte) []TXOutput {
-	var UTXOs []TXOutput
-	unspentTransactions := bc.FindUnspentTransactions(pubKeyHash)
+// FindUTXO finds all unspent transaction outputs and returns transactions with spent outputs removed
+func (bc *Blockchain) FindUTXO() map[string]TXOutputs {
+	UTXO := make(map[string]TXOutputs)
+	spentTXOs := make(map[string][]int)
+	bci := bc.Iterator()
 
-	for _, tx := range unspentTransactions {
-		for _, out := range tx.Vout {
-			if out.IsLockedWithKey(pubKeyHash) {
-				UTXOs = append(UTXOs, out)
+	for {
+		block := bci.Next()
+
+		for _, tx := range block.Transactions {
+			txID := hex.EncodeToString(tx.ID)
+
+		Outputs:
+			for outIdx, out := range tx.Vout {
+				// Was the output spent?
+				if spentTXOs[txID] != nil {
+					for _, spentOutIdx := range spentTXOs[txID] {
+						if spentOutIdx == outIdx {
+							continue Outputs
+						}
+					}
+				}
+
+				outs := UTXO[txID]
+				outs.Outputs = append(outs.Outputs, out)
+				UTXO[txID] = outs
 			}
+
+			if tx.IsCoinbase() == false {
+				for _, in := range tx.Vin {
+					inTxID := hex.EncodeToString(in.Txid)
+					spentTXOs[inTxID] = append(spentTXOs[inTxID], in.Vout)
+				}
+			}
+		}
+
+		if len(block.PrevBlockHash) == 0 {
+			break
 		}
 	}
 
-	return UTXOs
+	return UTXO
 }
+
 
 // FindSpendableOutputs finds and returns unspent outputs to reference in inputs
 func (bc *Blockchain) FindSpendableOutputs(pubKeyHash []byte, amount int) (int, map[string][]int) {
@@ -234,7 +278,7 @@ Work:
 }
 
 // MineBlock mines a new block with the provided transactions
-func (bc *Blockchain) MineBlock(transactions []*Transaction) {
+func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	var lastHash []byte
 
 	for _, tx := range transactions {
@@ -275,22 +319,26 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) {
 	if err != nil {
 		log.Panic(err)
 	}
+	return newBlock
 }
 
-func GetBalance(address string) {
-	bc := LoadBlockchain()
 
-	balance := 0
-	pubKeyHash, _:= base58.B58decode(address)
-	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
-	UTXOs := bc.FindUTXO(pubKeyHash)
+// func GetBalance(address string) {
+// 	bc := LoadBlockchain()
 
-	for _, out := range UTXOs {
-		balance += out.Value
-	}
+// 	balance := 0
+// 	pubKeyHash, _:= base58.B58decode(address)
+// 	pubKeyHash = pubKeyHash[1 : len(pubKeyHash)-4]
+// 	UTXOs := bc.FindUTXO(pubKeyHash)
 
-	fmt.Printf("Balance of '%s': %d\n", address, balance)
-}
+// 	for _, out := range UTXOs {
+// 		balance += out.Value
+// 	}
+
+// 	fmt.Printf("Balance of '%s': %d\n", address, balance)
+// }
+
+
 
 // SignTransaction signs inputs of a Transaction
 func (bc *Blockchain) SignTransaction(tx *Transaction, privKey elliptic.PrivateKey) {
@@ -330,6 +378,10 @@ func (bc *Blockchain) FindTransaction(ID []byte) (Transaction, error) {
 
 // VerifyTransaction verifies transaction input signatures
 func (bc *Blockchain) VerifyTransaction(tx *Transaction) bool {
+	if tx.IsCoinbase() {
+		return true
+	}
+	
 	prevTXs := make(map[string]Transaction)
 
 	for _, vin := range tx.Vin {
