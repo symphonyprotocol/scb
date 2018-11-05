@@ -7,6 +7,7 @@ import "log"
 import "encoding/hex"
 import "github.com/symphonyprotocol/sutil/elliptic"
 import "math/big"
+// import "time"
 
 // 挖矿奖励金
 const subsidy = 100
@@ -16,6 +17,7 @@ type Transaction struct {
 	ID   []byte
 	Vin  []TXInput
 	Vout []TXOutput
+	// Timestamp  int64
 }
 
 // IsCoinbase checks whether the transaction is coinbase
@@ -35,6 +37,18 @@ func (tx Transaction) Serialize() []byte {
 
 	return encoded.Bytes()
 }
+//  Deserializes Transaction
+func DeserializeTransction(d []byte) *Transaction {
+	var transaction Transaction
+
+	decoder := gob.NewDecoder(bytes.NewReader(d))
+	err := decoder.Decode(&transaction)
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return &transaction
+}
 
 // Hash returns the hash of the Transaction
 func (tx *Transaction) Hash() []byte {
@@ -47,7 +61,6 @@ func (tx *Transaction) Hash() []byte {
 
 	return hash[:]
 }
-
 
 func (tx *Transaction) Sign(privKey elliptic.PrivateKey, prevTXs map[string]Transaction) {
 	if tx.IsCoinbase() {
@@ -78,7 +91,6 @@ func (tx *Transaction) Sign(privKey elliptic.PrivateKey, prevTXs map[string]Tran
 		tx.Vin[inID].Signature = signature
 	}
 }
-
 
 // TrimmedCopy creates a trimmed copy of Transaction to be used in signing
 func (tx *Transaction) TrimmedCopy() Transaction {
@@ -144,7 +156,6 @@ func (tx *Transaction) Verify(prevTXs map[string]Transaction) bool {
 
 	return true
 }
-
 
 // 创建coinbase 交易
 func NewCoinbaseTX(to, data string) *Transaction {

@@ -14,6 +14,7 @@ import "github.com/symphonyprotocol/sutil/elliptic"
 
 const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
+const packageBucket = "packages"
 const genesisCoinbaseData = "I’m an Amazon Employee. My Company Shouldn’t Sell Facial Recognition Tech to Police."
 
 // Blockchain implements interactions with a DB
@@ -117,6 +118,12 @@ func CreateBlockchain(address string) *Blockchain {
 
 		b, err := tx.CreateBucket([]byte(blocksBucket))
 		if err != nil {
+			log.Panic(err)
+		}
+
+		//create bucket for unpackage transaction
+		_, err2 := tx.CreateBucket([]byte(packageBucket))
+		if err2 != nil {
 			log.Panic(err)
 		}
 
@@ -322,6 +329,54 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	return newBlock
 }
 
+func(bc *Blockchain) SaveUTXOTransaction(trans *Transaction){
+	if trans.IsCoinbase(){
+		return
+	}
+	err := bc.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		err := b.Put(trans.ID, trans.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func(bc *Blockchain) LoadUTXOUnpackTransaction() *Transaction {
+	var trans *Transaction = nil
+
+	bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		c := b.Cursor()
+		// for k, v := c.First(); k != nil; k, v = c.Next() {
+		// 	fmt.Printf("key=%s, value=%s\n", k, v)
+		// }
+		key, val := c.First()
+		if key == nil || val == nil {
+			return nil
+		}
+		trans = DeserializeTransction(val)
+		return nil
+	})
+
+	return trans
+}
+
+func (bc *Blockchain) RemovePackedUtxoTransaction(transID []byte) error{
+	var err error = nil
+	bc.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		err = b.Delete(transID)
+		return err
+	})
+	return err
+} 
 
 // func GetBalance(address string) {
 // 	bc := LoadBlockchain()

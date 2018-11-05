@@ -56,15 +56,24 @@ func DeserializeBlock(d []byte) *Block {
 
 // HashTransactions returns a hash of the transactions in the block
 func (b *Block) HashTransactions() []byte {
-	var txHashes [][]byte
-	var txHash [32]byte
+	// var txHashes [][]byte
+	// var txHash [32]byte
+
+	// for _, tx := range b.Transactions {
+	// 	txHashes = append(txHashes, tx.ID)
+	// }
+	// txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
+
+	// return txHash[:]
+
+	var transactions [][]byte
 
 	for _, tx := range b.Transactions {
-		txHashes = append(txHashes, tx.ID)
+		transactions = append(transactions, tx.Serialize())
 	}
-	txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
+	mTree := NewMerkleTree(transactions)
 
-	return txHash[:]
+	return mTree.RootNode.Data
 }
 
 // NewProofOfWork builds and returns a ProofOfWork
@@ -95,7 +104,7 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 			break
 		} else {
 			nonce++
-			time.Sleep(time.Millisecond * 100)
+			time.Sleep(time.Millisecond * 5)
 		}
 	}
 	fmt.Printf("find:%x\n", hash)

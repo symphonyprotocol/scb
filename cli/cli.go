@@ -27,6 +27,10 @@ func (cli *CLI) Run() {
 
 	printChainCmd := flag.NewFlagSet("printchain", flag.ExitOnError)
 
+	mineCmd := flag.NewFlagSet("mine", flag.ExitOnError)
+	mineAddress := mineCmd.String("address", "", "miner address")
+
+
 	switch os.Args[1] {
 	case "createblockchain":
 		err := createBlockchainCmd.Parse(os.Args[2:])
@@ -45,6 +49,11 @@ func (cli *CLI) Run() {
 		}
 	case "printchain":
 		err := printChainCmd.Parse(os.Args[2:])
+		if err != nil {
+			log.Panic(err)
+		}
+	case "mine":
+		err := mineCmd.Parse(os.Args[2:])
 		if err != nil {
 			log.Panic(err)
 		}
@@ -74,5 +83,12 @@ func (cli *CLI) Run() {
 	}
 	if printChainCmd.Parsed() {
 		cli.printChain()
+	}
+	if mineCmd.Parsed(){
+		if *mineAddress == ""{
+			mineCmd.Usage()
+			os.Exit(1)
+		}
+		cli.mine(*mineAddress)
 	}
 }

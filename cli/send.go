@@ -28,10 +28,13 @@ func (cli *CLI) send(from, to string, amount int, wif string) {
 	defer db.Close()
 
 	tx := block.NewUTXOTransaction(from, to, amount, &utxoset, prikey)
-	cbtx := block.NewCoinbaseTX(from, "")
-	txs := []* block.Transaction{cbtx, tx}
+	fmt.Print(tx)
+	//save to bolt db
+	bc.SaveUTXOTransaction(tx)
+	// cbtx := block.NewCoinbaseTX(from, "")
+	// txs := []* block.Transaction{cbtx, tx}
 
-	newblock := bc.MineBlock(txs)
-	utxoset.Update(newblock)
+	// newblock := bc.MineBlock(txs)
+	// utxoset.Update(newblock)
 	fmt.Println("Success!")
 }
