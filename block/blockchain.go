@@ -287,6 +287,7 @@ Work:
 // MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	var lastHash []byte
+	var lastHeight int
 
 	for _, tx := range transactions {
 		if bc.VerifyTransaction(tx) != true {
@@ -297,7 +298,10 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 	err := bc.db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash = b.Get([]byte("l"))
-
+		
+		blockbytes := b.Get(lastHash)
+		block := DeserializeBlock(blockbytes)
+		lastHeight = block.Height
 		return nil
 	})
 
@@ -305,7 +309,7 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction) *Block {
 		log.Panic(err)
 	}
 
-	newBlock := NewBlock(transactions, lastHash)
+	newBlock := NewBlock(transactions, lastHash, lastHeight + 1)
 
 	err = bc.db.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
@@ -448,4 +452,19 @@ func (bc *Blockchain) VerifyTransaction(tx *Transaction) bool {
 	}
 
 	return tx.Verify(prevTXs)
+}
+
+func(bc *Blockchain) GetBlockHeight() int{
+	var lastBlock Block
+	err := bc.db.View(func(tx *bolt.Tx) error{
+		bucket := tx.Bucket([]byte(blocksBucket))
+		blockhash := bucket.Get([]byte ("l"))
+		blockdata := bucket.Get(blockhash)
+		lastBlock = *DeserializeBlock(blockdata)
+		return nil
+	})
+	if err != nil{
+		log.Panic(err)
+	}
+	return lastBlock.Height
 }
