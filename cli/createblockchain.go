@@ -7,7 +7,7 @@ import (
 	block "github.com/symphonyprotocol/scb/block"
 )
 
-func (cli *CLI) createBlockchain(address string) {
+func (cli *CLI) CreateBlockchain(address string) {
 	// _, valid := elliptic.LoadAddress(address)
 
 	// if !valid {

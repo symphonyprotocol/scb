@@ -8,11 +8,15 @@ import (
 	"github.com/boltdb/bolt"
 	"bytes"
 	"errors"
+	osuser "os/user"
 )
 import "github.com/symphonyprotocol/sutil/elliptic"
 // import "github.com/symphonyprotocol/sutil/base58"
-
-const dbFile = "blockchain.db"
+var(
+	CURRENT_USER, _ = osuser.Current()
+	dbFile = CURRENT_USER.HomeDir + "/.blockchain.db"
+)
+// const dbFile = "blockchain.db"
 const blocksBucket = "blocks"
 const packageBucket = "packages"
 const genesisCoinbaseData = "I’m an Amazon Employee. My Company Shouldn’t Sell Facial Recognition Tech to Police."
@@ -467,4 +471,19 @@ func(bc *Blockchain) GetBlockHeight() int{
 		log.Panic(err)
 	}
 	return lastBlock.Height
+}
+
+// Get all block hashes in chain 
+func (bc *Blockchain) GetBlockHashes() [][]byte{
+	var hashes [][]byte
+	bci := bc.Iterator()
+
+	for{
+		block := bci.Next()
+		hashes = append(hashes, block.Hash)
+		if len(block.PrevBlockHash) == 0{
+			break
+		}
+	}
+	return hashes
 }
