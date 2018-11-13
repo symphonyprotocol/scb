@@ -82,7 +82,7 @@ func LoadBlockchain() *Blockchain {
 		log.Panic(err)
 	}
 
-	err = db.Update(func(tx *bolt.Tx) error {
+	err = db.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		tip = b.Get([]byte("l"))
 
@@ -155,20 +155,22 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 		log.Panic(err)
 	}
 
+	account := NewAccount(address)
+	trans := NewTransaction(account.Nonce, subsidy, "", address)
+	trans.Sign(privateKey)
 
-	err = db.Update(func(tx *bolt.Tx) error {
-		b, err := tx.CreateBucket([]byte(accountBucket))
-		if err != nil {
-			log.Panic(err)
-		}
-		account := NewAccount(address)
-		err = b.Put([]byte(address), account.Serialize())
-		if err != nil {
-			log.Panic(err)
-		}
-		trans := NewTransaction(account.Nonce, subsidy, "", address)
-		trans.Sign(privateKey)
-		NewGenesisBlock(trans, func (genesis *Block) {
+	NewGenesisBlock(trans, func (genesis *Block) {
+		err = db.Update(func(tx *bolt.Tx) error {
+			b, err := tx.CreateBucket([]byte(accountBucket))
+			if err != nil {
+				log.Panic(err)
+			}
+	
+			err = b.Put([]byte(address), account.Serialize())
+			if err != nil {
+				log.Panic(err)
+			}
+	
 			b, err = tx.CreateBucket([]byte(blocksBucket))
 			if err != nil {
 				log.Panic(err)
@@ -189,16 +191,16 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 				log.Panic(err)
 			}
 			tip = genesis.Header.Hash
-
-			if err != nil {
-				log.Panic(err)
-			}
-		
-			bc := Blockchain{tip, db}
-			if callback != nil {
-				callback(&bc)
-			}
+	
+			return nil
 		})
-		return nil
+		if err != nil {
+			log.Panic(err)
+		}
+	
+		bc := Blockchain{tip, db}
+		if callback != nil {
+			callback(&bc)
+		}
 	})
 }
