@@ -31,6 +31,7 @@ type Block struct {
 type ProofOfWork struct {
 	block  *Block
 	target *big.Int
+	quitSign	chan struct{}
 }
 
 
@@ -76,39 +77,53 @@ func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
 	target.Lsh(target, uint(256-targetBits))
 
-	pow := &ProofOfWork{b, target}
+	pow := &ProofOfWork{b, target, make(chan struct{})}
 
 	return pow
 }
 
 // Run performs a proof-of-work
-func (pow *ProofOfWork) Run() (int64, []byte) {
+func (pow *ProofOfWork) Run(callback func(int64, []byte))  {
 	var hashInt big.Int
 	var hash [32]byte
 	var nonce int64 = 0
 
 	fmt.Println("Mining a new block")
-	for nonce < maxNonce {
-		data := pow.prepareData(nonce)
-
-		hash = sha256.Sum256(data)
-		fmt.Printf("%d->%x\n", nonce, hash)
-		hashInt.SetBytes(hash[:])
-
-		if hashInt.Cmp(pow.target) == -1 {
-			break
-		} else {
-			nonce++
-			time.Sleep(time.Millisecond * 5)
+	go func() {
+		for nonce < maxNonce {
+			QUIT:
+			select {
+			case <- pow.quitSign:
+				break QUIT
+			default:
+				data := pow.prepareData(nonce)
+		
+				hash = sha256.Sum256(data)
+				fmt.Printf("%d->%x\n", nonce, hash)
+				hashInt.SetBytes(hash[:])
+		
+				if hashInt.Cmp(pow.target) == -1 {
+					// found
+					break QUIT
+					fmt.Printf("find:%x\n", hash)
+					if callback != nil {
+						callback(nonce, hash[:])
+					}
+				} else {
+					nonce++
+					time.Sleep(time.Millisecond * 5)
+				}
+			}
 		}
-	}
-	fmt.Printf("find:%x\n", hash)
+	}()
+}
 
-	return nonce, hash[:]
+func (pow *ProofOfWork) Stop() {
+	pow.quitSign <- struct{}{}
 }
 
 // NewBlock creates and returns Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64) *Block {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, callback func(*Block)) {
 	header := BlockHeader{
 		Timestamp: time.Now().Unix(),
 		PrevBlockHash: prevBlockHash,
@@ -121,11 +136,13 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64) *
 		Transactions: transactions,
 	}
 	pow := NewProofOfWork(block)
-	nonce, hash := pow.Run()
-	block.Header.Hash = hash[:]
-	block.Header.Nonce = nonce
-	return block
-
+	pow.Run(func (nonce int64, hash []byte) {
+		block.Header.Hash = hash[:]
+		block.Header.Nonce = nonce
+		if callback != nil {
+			callback(block)
+		}
+	})
 }
 
 
@@ -158,7 +175,7 @@ func (pow *ProofOfWork) Validate() bool {
 }
 
 // NewGenesisBlock creates and returns genesis Block
-func NewGenesisBlock(trans *Transaction) *Block {
+func NewGenesisBlock(trans *Transaction, callback func(*Block)) {
 	fmt.Println("New Genesis Block")
-	return NewBlock([]*Transaction{trans}, []byte{}, 0)
+	NewBlock([]*Transaction{trans}, []byte{}, 0, callback)
 }

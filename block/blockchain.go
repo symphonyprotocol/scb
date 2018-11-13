@@ -98,10 +98,48 @@ func LoadBlockchain() *Blockchain {
 	return &bc
 }
 
+// new empty blockchain, just the db initialized.
+func CreateEmptyBlockchain() *Blockchain {
+	if dbExists() {
+		fmt.Println("Blockchain already exists.")
+		return LoadBlockchain()
+	}
 
+	var tip []byte
+	db, err := bolt.Open(dbFile, 0600, nil)
+	// defer db.Close()
+	if err != nil {
+		log.Panic(err)
+	}
+	err = db.Update(func(tx *bolt.Tx) error {
+		_, err := tx.CreateBucket([]byte(accountBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blocksBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err2 := tx.CreateBucket([]byte(packageBucket))
+		if err2 != nil {
+			log.Panic(err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	bc := Blockchain{tip, db}
+	return &bc
+}
 
 // new blockchain with genesis Block
-func CreateBlockchain(address, wif string) *Blockchain {
+func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 	if dbExists() {
 		fmt.Println("Blockchain already exists.")
 		os.Exit(1)
@@ -130,35 +168,37 @@ func CreateBlockchain(address, wif string) *Blockchain {
 		}
 		trans := NewTransaction(account.Nonce, subsidy, "", address)
 		trans.Sign(privateKey)
-		genesis := NewGenesisBlock(trans)
+		NewGenesisBlock(trans, func (genesis *Block) {
+			b, err = tx.CreateBucket([]byte(blocksBucket))
+			if err != nil {
+				log.Panic(err)
+			}
+	
+			_, err2 := tx.CreateBucket([]byte(packageBucket))
+			if err2 != nil {
+				log.Panic(err)
+			}
+	
+			err = b.Put(genesis.Header.Hash, genesis.Serialize())
+			if err != nil {
+				log.Panic(err)
+			}
+	
+			err = b.Put([]byte("l"), genesis.Header.Hash)
+			if err != nil {
+				log.Panic(err)
+			}
+			tip = genesis.Header.Hash
 
-		b, err = tx.CreateBucket([]byte(blocksBucket))
-		if err != nil {
-			log.Panic(err)
-		}
-
-		_, err2 := tx.CreateBucket([]byte(packageBucket))
-		if err2 != nil {
-			log.Panic(err)
-		}
-
-		err = b.Put(genesis.Header.Hash, genesis.Serialize())
-		if err != nil {
-			log.Panic(err)
-		}
-
-		err = b.Put([]byte("l"), genesis.Header.Hash)
-		if err != nil {
-			log.Panic(err)
-		}
-		tip = genesis.Header.Hash
+			if err != nil {
+				log.Panic(err)
+			}
+		
+			bc := Blockchain{tip, db}
+			if callback != nil {
+				callback(&bc)
+			}
+		})
 		return nil
 	})
-
-	if err != nil {
-		log.Panic(err)
-	}
-
-	bc := Blockchain{tip, db}
-	return &bc
 }
