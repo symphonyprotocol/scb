@@ -90,8 +90,8 @@ func (pow *ProofOfWork) Run(callback func(int64, []byte))  {
 
 	fmt.Println("Mining a new block")
 	go func() {
+		QUIT:
 		for nonce < maxNonce {
-			QUIT:
 			select {
 			case <- pow.quitSign:
 				break QUIT
