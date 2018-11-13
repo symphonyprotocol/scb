@@ -1,25 +1,30 @@
 package block
 
+import "math"
+import "math/big"
 import "bytes"
 import "encoding/gob"
 import "log"
-import "crypto/sha256"
-import "time"
-import "math/big"
 import "fmt"
-import "math"
-import  . "github.com/symphonyprotocol/scb/utils"
+import "time"
+import "crypto/sha256"
+import "github.com/symphonyprotocol/scb/utils"
 
 const targetBits = 12
-var maxNonce = math.MaxInt64
 
-type Block struct {
+var maxNonce = int64(math.MaxInt64)
+
+type BlockHeader struct{
 	Timestamp     int64
-	Transactions  []*Transaction
 	PrevBlockHash []byte
 	Hash          []byte
-	Nonce         int
-	Height		  int
+	Nonce         int64
+	Height		  int64
+}
+
+type Block struct {
+	Header BlockHeader
+	Transactions  []*Transaction
 }
 
 // ProofOfWork represents a proof-of-work
@@ -29,7 +34,7 @@ type ProofOfWork struct {
 }
 
 
-// Serialize serializes the block
+// Serializes the block
 func (b *Block) Serialize() []byte {
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
@@ -38,11 +43,10 @@ func (b *Block) Serialize() []byte {
 	if err != nil {
 		log.Panic(err)
 	}
-
 	return result.Bytes()
 }
 
-// DeserializeBlock deserializes a block
+// Deserializes a block
 func DeserializeBlock(d []byte) *Block {
 	var block Block
 
@@ -55,18 +59,8 @@ func DeserializeBlock(d []byte) *Block {
 	return &block
 }
 
-// HashTransactions returns a hash of the transactions in the block
+// Hash transactions with merkle tree
 func (b *Block) HashTransactions() []byte {
-	// var txHashes [][]byte
-	// var txHash [32]byte
-
-	// for _, tx := range b.Transactions {
-	// 	txHashes = append(txHashes, tx.ID)
-	// }
-	// txHash = sha256.Sum256(bytes.Join(txHashes, []byte{}))
-
-	// return txHash[:]
-
 	var transactions [][]byte
 
 	for _, tx := range b.Transactions {
@@ -88,10 +82,10 @@ func NewProofOfWork(b *Block) *ProofOfWork {
 }
 
 // Run performs a proof-of-work
-func (pow *ProofOfWork) Run() (int, []byte) {
+func (pow *ProofOfWork) Run() (int64, []byte) {
 	var hashInt big.Int
 	var hash [32]byte
-	nonce := 0
+	var nonce int64 = 0
 
 	fmt.Println("Mining a new block")
 	for nonce < maxNonce {
@@ -113,33 +107,36 @@ func (pow *ProofOfWork) Run() (int, []byte) {
 	return nonce, hash[:]
 }
 
-
 // NewBlock creates and returns Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int) *Block {
-	block := &Block{time.Now().Unix(), transactions, prevBlockHash, []byte{}, 0, height}
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64) *Block {
+	header := BlockHeader{
+		Timestamp: time.Now().Unix(),
+		PrevBlockHash: prevBlockHash,
+		Hash: []byte{},
+		Nonce: 0,
+		Height: height,
+	}
+	block := &Block{
+		Header: header,
+		Transactions: transactions,
+	}
 	pow := NewProofOfWork(block)
 	nonce, hash := pow.Run()
-
-	block.Hash = hash[:]
-	block.Nonce = nonce
-
+	block.Header.Hash = hash[:]
+	block.Header.Nonce = nonce
 	return block
+
 }
 
-// NewGenesisBlock creates and returns genesis Block
-func NewGenesisBlock(coinbase *Transaction) *Block {
-	fmt.Println("New Genesis Block")
-	return NewBlock([]*Transaction{coinbase}, []byte{}, 0)
-}
 
-func (pow *ProofOfWork) prepareData(nonce int) []byte {
+func (pow *ProofOfWork) prepareData(nonce int64) []byte {
 	data := bytes.Join(
 		[][]byte{
-			pow.block.PrevBlockHash,
+			pow.block.Header.PrevBlockHash,
 			pow.block.HashTransactions(),
-			IntToHex(pow.block.Timestamp),
-			IntToHex(int64(targetBits)),
-			IntToHex(int64(nonce)),
+			utils.IntToHex(pow.block.Header.Timestamp),
+			utils.IntToHex(int64(targetBits)),
+			utils.IntToHex(nonce),
 		},
 		[]byte{},
 	)
@@ -151,11 +148,17 @@ func (pow *ProofOfWork) prepareData(nonce int) []byte {
 func (pow *ProofOfWork) Validate() bool {
 	var hashInt big.Int
 
-	data := pow.prepareData(pow.block.Nonce)
+	data := pow.prepareData(pow.block.Header.Nonce)
 	hash := sha256.Sum256(data)
 	hashInt.SetBytes(hash[:])
 
 	isValid := hashInt.Cmp(pow.target) == -1
 
 	return isValid
+}
+
+// NewGenesisBlock creates and returns genesis Block
+func NewGenesisBlock(trans *Transaction) *Block {
+	fmt.Println("New Genesis Block")
+	return NewBlock([]*Transaction{trans}, []byte{}, 0)
 }

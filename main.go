@@ -6,11 +6,11 @@ package main
 
 // import . "./cli"
 
-import "github.com/symphonyprotocol/scb/cli"
+// import "github.com/symphonyprotocol/scb/cli"
 
 // import "github.com/symphonyprotocol/sutil/elliptic"
 // import "log"
-// import "github.com/symphonyprotocol/scb/block"
+import "github.com/symphonyprotocol/scb/block"
 
 func main(){
 	// tx := block.NewCoinbaseTX("xxx", "i love music")
@@ -23,15 +23,15 @@ func main(){
 
 
 
-	cli := cli.CLI{}
-	cli.Run()
+	// cli := cli.CLI{}
+	// cli.Run()
 
 
-	// 1.create chain
+	//1.create chain
 
-	// bc := block.CreateBlockchain("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y")
-	// db := bc.GetDB()
-	// defer db.Close()
+	bc := block.CreateBlockchain("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y", "L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5")
+	db := bc.GetDB()
+	defer db.Close()
 	// utxoset := block.UTXOSet{
 	// 	Blockchain: bc,
 	// }
