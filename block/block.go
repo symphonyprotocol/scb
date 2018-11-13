@@ -104,11 +104,11 @@ func (pow *ProofOfWork) Run(callback func(int64, []byte))  {
 		
 				if hashInt.Cmp(pow.target) == -1 {
 					// found
-					break QUIT
 					fmt.Printf("find:%x\n", hash)
 					if callback != nil {
 						callback(nonce, hash[:])
 					}
+					break QUIT
 				} else {
 					nonce++
 					time.Sleep(time.Millisecond * 5)
