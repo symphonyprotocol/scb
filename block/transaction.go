@@ -112,13 +112,14 @@ func SendTo(from, to string, amount int64, wif string){
 		log.Panic("ERROR: Recipient address is not valid")
 	}
 
+	account := GetAccount(from)
+	
 	bc := LoadBlockchain()
 	db := bc.GetDB()
 	defer db.Close()
 
 	unpacktransactions := bc.FindUnpackTransaction(from)
 	if len(unpacktransactions) == 0{
-		account := GetAccount(from)
 		trans = NewTransaction(account.Nonce + 1, amount, from,to)
 	}else{
 		nonce := GetMaxUnpackNonce(unpacktransactions)

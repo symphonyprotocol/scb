@@ -86,7 +86,7 @@ func GetAccount(address string) *Account{
 		log.Panic(err)
 	}
 	var account *Account
-	err = db.Update(func(tx *bolt.Tx) error {
+	err = db.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(accountBucket))
 		accountbytes := bucket.Get([]byte(address))
 		if accountbytes != nil{
