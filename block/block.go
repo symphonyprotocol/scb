@@ -11,7 +11,7 @@ import "crypto/sha256"
 import "github.com/symphonyprotocol/scb/utils"
 import sutils "github.com/symphonyprotocol/sutil/utils"
 
-const targetBits = 12
+const targetBits = 8
 
 var maxNonce = int64(math.MaxInt64)
 
@@ -128,7 +128,7 @@ func (pow *ProofOfWork) Stop() {
 }
 
 // NewBlock creates and returns Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, callback func(*Block)) {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, callback func(*Block, )) {
 	header := BlockHeader{
 		Timestamp: time.Now().Unix(),
 		PrevBlockHash: prevBlockHash,

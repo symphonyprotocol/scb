@@ -1,16 +1,19 @@
 package block
-import "github.com/boltdb/bolt"
-import "os"
-import "log"
-import 	osuser "os/user"
-import "fmt"
-import "github.com/symphonyprotocol/sutil/elliptic"
+
+import (
+	"github.com/boltdb/bolt"
+	"os"
+	"log"
+	osuser "os/user"
+	"fmt"
+	"github.com/symphonyprotocol/sutil/elliptic"
+)
 
 const blocksBucket = "blocks"
 const accountBucket = "account"
 const packageBucket = "packages"
 // 挖矿奖励金
-const subsidy = 100
+const Subsidy = 100
 
 var(
 	CURRENT_USER, _ = osuser.Current()
@@ -155,8 +158,8 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 		log.Panic(err)
 	}
 
-	account := NewAccount(address)
-	trans := NewTransaction(account.Nonce, subsidy, "", address)
+	account := InitAccount(address)
+	trans := NewTransaction(account.Nonce, Subsidy, "", address)
 	trans.Sign(privateKey)
 
 	NewGenesisBlock(trans, func (genesis *Block) {
@@ -197,10 +200,123 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 		if err != nil {
 			log.Panic(err)
 		}
-	
 		bc := Blockchain{tip, db}
 		if callback != nil {
 			callback(&bc)
+		}
+	})
+}
+
+func(bc *Blockchain) SaveTransaction(trans *Transaction){
+	err := bc.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		err := b.Put(trans.ID, trans.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func(bc *Blockchain) FindUnpackTransaction(address string) []* Transaction{
+	var transactions []* Transaction
+
+	err := bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		c := b.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// fmt.Printf("key=%s, value=%s\n", k, v)
+			trans := DeserializeTransction(v)
+			if trans.From == address{
+				transactions = append(transactions, trans)
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return transactions
+}
+
+func (bc *Blockchain) FindAllUnpackTransaction() map[string] []* Transaction {
+	var trans_map map[string] []* Transaction
+	trans_map = make(map[string] []* Transaction)
+
+	err := bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		c := b.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// fmt.Printf("key=%s, value=%s\n", k, v)
+			trans := DeserializeTransction(v)
+			trans_s, ok := trans_map [trans.From]
+			if ok{
+				trans_s = append(trans_s, trans)
+				trans_map[trans.From] = trans_s
+			}else{
+				trans_map[trans.From] = []* Transaction{trans}
+			}
+		}
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+	return trans_map
+}
+
+
+func(bc *Blockchain) GetBlockHeight() int64{
+	var lastBlock Block
+	err := bc.db.View(func(tx *bolt.Tx) error{
+		bucket := tx.Bucket([]byte(blocksBucket))
+		blockhash := bucket.Get([]byte ("l"))
+		blockdata := bucket.Get(blockhash)
+		lastBlock = *DeserializeBlock(blockdata)
+		return nil
+	})
+	if err != nil{
+		log.Panic(err)
+	}
+	return lastBlock.Header.Height
+}
+
+// MineBlock mines a new block with the provided transactions
+func (bc *Blockchain) MineBlock(transactions []*Transaction, callback func(* Block)) {
+	var lastHash []byte
+	var lastHeight int64
+	for _, tx := range transactions{
+		if !tx.Verify(){
+			log.Panic("ERROR: Invalid transaction")
+		}
+	}
+
+	err := bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash = b.Get([]byte("l"))
+		
+		blockbytes := b.Get(lastHash)
+		block := DeserializeBlock(blockbytes)
+		lastHeight = block.Header.Height
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	NewBlock(transactions, lastHash, lastHeight + 1, func(block * Block){
+		if nil != block{
+			callback(block)
 		}
 	})
 }
