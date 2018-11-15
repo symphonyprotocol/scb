@@ -132,7 +132,7 @@ func SendTo(from, to string, amount int64, wif string){
 
 }
 
-func Mine(address string){
+func Mine(address string) []* Transaction{
 	bc := LoadBlockchain()
 	db := bc.GetDB()
 	defer db.Close()
@@ -184,5 +184,6 @@ func Mine(address string){
 		flag <- struct{}{}
 	})
 	<- flag
+	return transactions
 }
 
