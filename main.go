@@ -1,16 +1,17 @@
 package main
 
 // import "fmt"
+// import "strconv"
 // // import . "./block"
 
 
 // import . "./cli"
 
-// import "github.com/symphonyprotocol/scb/cli"
+import "github.com/symphonyprotocol/scb/cli"
 
 // import "github.com/symphonyprotocol/sutil/elliptic"
 // import "log"
-import "github.com/symphonyprotocol/scb/block"
+// import "github.com/symphonyprotocol/scb/block"
 
 func main(){
 	// tx := block.NewCoinbaseTX("xxx", "i love music")
@@ -22,16 +23,21 @@ func main(){
 	// bc.FindUTXO("trumpAddress")
 
 
-
-	// cli := cli.CLI{}
-	// cli.Run()
+	cli := cli.CLI{}
+	cli.Run()
 
 
 	//1.create chain
+	// flag := make(chan struct{})
 
-	bc := block.CreateBlockchain("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y", "L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5")
-	db := bc.GetDB()
-	defer db.Close()
+	//  block.CreateBlockchain("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y", "L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5", func(bc *block.Blockchain){
+	// 	db := bc.GetDB()
+	// 	db.Close()
+	// 	block.ChangeBalance("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y", block.Subsidy)
+	// 	flag <- struct{}{}
+	// })
+	// <-flag
+
 	// utxoset := block.UTXOSet{
 	// 	Blockchain: bc,
 	// }
@@ -128,9 +134,42 @@ func main(){
 	// fmt.Printf("Balance of '%s': %d\n", address, balance)
 
 	
+	// 4.print 
+	// bc2 := block.LoadBlockchain()
+	// // db2 := bc2.GetDB()
+	// // defer db2.Close()
+
+	// bci := bc2.Iterator()
+
+	// for {
+	// 	b := bci.Next()
+
+	// 	fmt.Printf("Prev. hash: %x\n", b.Header.PrevBlockHash)
+	// 	fmt.Printf("Hash: %x\n", b.Header.Hash)
+	// 	pow := block.NewProofOfWork(b)
+	// 	fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
+	// 	fmt.Println()
+
+	// 	if len(b.Header.PrevBlockHash) == 0 {
+	// 		break
+	// 	}
+	// }
 
 
 
+	// 5. get ballance new
+	// block.GetBalance("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y")
+
+
+	// 6. send
+	//block.SendTo("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y", "189wh8VjXLmKSZhnP9DQwcVKfvNemQSmBp", 1, "L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5")
+	
+	//7. mine
+	// block.Mine("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y")
+	// block.ChangeBalance("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y", block.Subsidy)
+
+	// block.GetBalance("1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y")
+	
 
 	// a := make(map[string][]int)
 
