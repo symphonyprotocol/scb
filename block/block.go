@@ -9,6 +9,7 @@ import "fmt"
 import "time"
 import "crypto/sha256"
 import "github.com/symphonyprotocol/scb/utils"
+import sutils "github.com/symphonyprotocol/sutil/utils"
 
 const targetBits = 12
 
@@ -70,6 +71,10 @@ func (b *Block) HashTransactions() []byte {
 	mTree := NewMerkleTree(transactions)
 
 	return mTree.RootNode.Data
+}
+
+func (h BlockHeader) HashString() string {
+	return sutils.BytesToString(h.Hash)
 }
 
 // NewProofOfWork builds and returns a ProofOfWork
