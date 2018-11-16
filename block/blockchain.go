@@ -54,8 +54,8 @@ func (i *BlockchainIterator) Next() *Block {
 		return nil
 	})
 
-	if err != nil {
-		log.Panic(err)
+	if err != nil || block == nil {
+		return nil
 	}
 
 	i.currentHash = block.Header.PrevBlockHash
