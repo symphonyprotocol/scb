@@ -411,22 +411,26 @@ func (bc *Blockchain) CombineBlock(block *Block){
 func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
 	var lastHash []byte
 	var lastHeight int64
-
-	err := bc.db.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(blocksBucket))
-		lastHash = b.Get([]byte("l"))
-		
-		blockbytes := b.Get(lastHash)
-		block := DeserializeBlock(blockbytes)
-		lastHeight = block.Header.Height
-		return nil
-	})
-	if err != nil {
-		log.Panic(err)
+	if len(bc.tip) > 0 {
+		err := bc.db.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(blocksBucket))
+			lastHash = b.Get([]byte("l"))
+			
+			blockbytes := b.Get(lastHash)
+			block := DeserializeBlock(blockbytes)
+			lastHeight = block.Header.Height
+			return nil
+		})
+		if err != nil {
+			log.Panic(err)
+		}
+	}else{
+		lastHeight = -1
 	}
 	// verify prevhash
 	hashCompRes := bytes.Compare(b.Header.PrevBlockHash, lastHash)
 	hashVerify := b.VerifyHash()
+
 	if hashCompRes == 0 && hashVerify && lastHeight + 1 == b.Header.Height{
 		return true
 	}
