@@ -50,7 +50,7 @@ func ChangeBalance(address string, balance int64){
 		}
 
 		if newbalance < 0 {
-			return fmt.Errorf("no enough money")
+			return fmt.Errorf("no enough amount")
 		}
 
 		newaccount = NewAccount(address, newbalance, newnonce)

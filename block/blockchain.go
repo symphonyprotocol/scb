@@ -380,7 +380,9 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 	db := bc.GetDB()
 	db.Close()
 	for _, trans := range block.Transactions{
-		ChangeBalance(trans.From, 0 - trans.Amount)
+		if trans.From != ""{
+			ChangeBalance(trans.From, 0 - trans.Amount)
+		}
 		ChangeBalance(trans.To, trans.Amount)
 	}
 
