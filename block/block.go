@@ -169,6 +169,7 @@ func (pow *ProofOfWork) prepareData(nonce int64) []byte {
 	return data
 }
 
+
 // Validate validates block's PoW
 func (pow *ProofOfWork) Validate() bool {
 	var hashInt big.Int
@@ -182,8 +183,42 @@ func (pow *ProofOfWork) Validate() bool {
 	return isValid
 }
 
+func (block *Block) prepareData() []byte{
+	data := bytes.Join(
+		[][]byte{
+			block.Header.PrevBlockHash,
+			block.HashTransactions(),
+			utils.IntToHex(block.Header.Timestamp),
+			utils.IntToHex(int64(targetBits)),
+			utils.IntToHex(block.Header.Nonce),
+		},
+		[]byte{},
+	)
+	return data
+}
+
+func (block *Block) VerifyPow() bool{
+	var hashInt big.Int
+	target := big.NewInt(1)
+	target.Lsh(target, uint(256-targetBits))
+
+	data := block.prepareData()
+	hash := sha256.Sum256(data)
+	hashInt.SetBytes(hash[:])
+	return hashInt.Cmp(target) == -1
+}
+
+func (block *Block) VerifyHash() bool{
+	data := block.prepareData()
+	hash := sha256.Sum256(data)
+
+	return bytes.Compare(hash[:], block.Header.Hash) == 0
+}
+
 // NewGenesisBlock creates and returns genesis Block
 func NewGenesisBlock(trans *Transaction, callback func(*Block)) {
 	fmt.Println("New Genesis Block")
 	NewBlock([]*Transaction{trans}, []byte{}, 0, callback)
 }
+
+
