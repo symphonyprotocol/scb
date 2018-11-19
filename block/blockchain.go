@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"github.com/boltdb/bolt"
 	"os"
 	"log"
@@ -319,4 +320,90 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction, callback func(* Blo
 			callback(block)
 		}
 	})
+}
+
+
+func (bc *Blockchain) verifyNewBlock(block *Block){
+	//1. verify block POW
+	pow_res := block.VerifyPow()
+	//2. verify block hash
+	block_hash_res := bc.VerifyBlockHash(block)
+	//3. verfiy transactions
+	trans_res := false
+	for _, trans := range block.Transactions{
+		if trans.Verify(){
+			trans_res = true
+		}else{
+			trans_res = false
+			break
+		}
+	}
+	if !pow_res{
+		fmt.Errorf("block pow verify fail")
+	}
+	if !block_hash_res{
+		fmt.Errorf("block hash fail")
+	}
+	if !trans_res{
+		fmt.Errorf("block transaction verify fail")
+	}
+}
+
+func(bc *Blockchain) AcceptNewBlock(block *Block){
+	bc.verifyNewBlock(block)
+	bc.CombineBlock(block)
+	db := bc.GetDB()
+	db.Close()
+	for _, trans := range block.Transactions{
+		ChangeBalance(trans.From, 0 - trans.Amount)
+		ChangeBalance(trans.To, trans.Amount)
+	}
+
+}
+
+func (bc *Blockchain) CombineBlock(block *Block){
+	err := bc.db.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		err := b.Put(block.Header.Hash, block.Serialize())
+		if err != nil {
+			log.Panic(err)
+		}
+
+		err = b.Put([]byte("l"), block.Header.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
+
+		bc.tip = block.Header.Hash
+
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+}
+
+func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
+	var lastHash []byte
+	var lastHeight int64
+
+	err := bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blocksBucket))
+		lastHash = b.Get([]byte("l"))
+		
+		blockbytes := b.Get(lastHash)
+		block := DeserializeBlock(blockbytes)
+		lastHeight = block.Header.Height
+		return nil
+	})
+	if err != nil {
+		log.Panic(err)
+	}
+	// verify prevhash
+	hashCompRes := bytes.Compare(b.Header.PrevBlockHash, lastHash)
+	hashVerify := b.VerifyHash()
+	if hashCompRes == 0 && hashVerify && lastHeight + 1 == b.Header.Height{
+		return true
+	}
+	return false
 }

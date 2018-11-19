@@ -181,9 +181,15 @@ func Mine(address string) []* Transaction{
 				return err
 			})
 		}
+
+		//for test
+		// bc.AcceptNewBlock(block)
+
+
 		flag <- struct{}{}
 	})
 	<- flag
+
 	return transactions
 }
 
