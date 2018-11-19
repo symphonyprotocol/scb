@@ -1,11 +1,14 @@
 package block
 
-import "encoding/gob"
-import "bytes"
-import "log"
-import "github.com/symphonyprotocol/sutil/elliptic"
-import "crypto/sha256"
-import "github.com/boltdb/bolt"
+import (
+	"github.com/symphonyprotocol/sutil/utils"
+	"encoding/gob"
+	"bytes"
+	"log"
+	"github.com/symphonyprotocol/sutil/elliptic"
+	"crypto/sha256"
+	"github.com/boltdb/bolt"
+)
 
 
 // Transaction represents a Bitcoin transaction
@@ -41,6 +44,10 @@ func DeserializeTransction(d []byte) *Transaction {
 	}
 
 	return &transaction
+}
+
+func (tx *Transaction) IDString() string {
+	return utils.BytesToString(tx.ID)
 }
 
 func (tx *Transaction) Sign(privKey *elliptic.PrivateKey){
@@ -97,7 +104,7 @@ func GetMaxUnpackNonce(transactions []* Transaction) int64{
 	return nonce
 }
 
-func SendTo(from, to string, amount int64, wif string){
+func SendTo(from, to string, amount int64, wif string) *Transaction {
 	_, validFrom := elliptic.LoadAddress(from)
 	_, validTo := elliptic.LoadAddress(to)
 	prikey, _ := elliptic.LoadWIF(wif)
@@ -129,7 +136,7 @@ func SendTo(from, to string, amount int64, wif string){
 	trans.Sign(private_key)
 
 	bc.SaveTransaction(trans)
-
+	return trans
 }
 
 func Mine(address string) []* Transaction{

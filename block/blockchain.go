@@ -1,6 +1,7 @@
 package block
 
 import (
+	"bytes"
 	"github.com/boltdb/bolt"
 	"os"
 	"log"
@@ -221,6 +222,31 @@ func(bc *Blockchain) SaveTransaction(trans *Transaction){
 	if err != nil {
 		log.Panic(err)
 	}
+}
+
+func(bc *Blockchain) FindUnpackTransactionById(id []byte) *Transaction{
+	var transaction *Transaction
+
+	err := bc.db.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(packageBucket))
+		c := b.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// fmt.Printf("key=%s, value=%s\n", k, v)
+			trans := DeserializeTransction(v)
+			if bytes.Compare(trans.ID, id) == 0 {
+				transaction = trans
+				break
+			}
+		}
+		return nil
+	})
+
+	if err != nil {
+		log.Panic(err)
+	}
+
+	return transaction
 }
 
 func(bc *Blockchain) FindUnpackTransaction(address string) []* Transaction{
