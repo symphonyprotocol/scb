@@ -4,16 +4,17 @@ import "math"
 import "math/big"
 import "bytes"
 import "encoding/gob"
-import "log"
 import "fmt"
 import "time"
 import "crypto/sha256"
 import "github.com/symphonyprotocol/scb/utils"
 import sutils "github.com/symphonyprotocol/sutil/utils"
+import "github.com/symphonyprotocol/log"
 
 const targetBits = 8
 
 var maxNonce = int64(math.MaxInt64)
+var blockLogger = log.GetLogger("scb")
 
 type BlockHeader struct{
 	Timestamp     int64
@@ -43,7 +44,8 @@ func (b *Block) Serialize() []byte {
 
 	err := encoder.Encode(b)
 	if err != nil {
-		log.Panic(err)
+		blockLogger.Error("Failed to serialize the block: %v", err)
+		panic(err)
 	}
 	return result.Bytes()
 }
@@ -55,7 +57,8 @@ func DeserializeBlock(d []byte) *Block {
 	decoder := gob.NewDecoder(bytes.NewReader(d))
 	err := decoder.Decode(&block)
 	if err != nil {
-		log.Panic(err)
+		blockLogger.Error("Failed to deserialize the block: %v", err)
+		return nil
 	}
 
 	return &block
