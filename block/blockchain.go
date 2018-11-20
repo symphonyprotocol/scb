@@ -364,21 +364,30 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 		}
 	}
 	if !pow_res{
-		fmt.Errorf("block pow verify fail")
+		log.Panic("block pow verify fail")
 	}
 	if !block_hash_res{
-		fmt.Errorf("block hash fail")
+		log.Panic("block hash fail")
 	}
 	if !trans_res{
-		fmt.Errorf("block transaction verify fail")
+		log.Panic("block transaction verify fail")
 	}
 }
 
 func(bc *Blockchain) AcceptNewBlock(block *Block){
-	bc.verifyNewBlock(block)
-	bc.CombineBlock(block)
-	db := bc.GetDB()
+	var blockchain *Blockchain
+
+	if len(bc.tip) != 0 {
+		blockchain = LoadBlockchain()
+	}else{
+		blockchain = bc
+	}
+
+	blockchain.verifyNewBlock(block)
+	blockchain.CombineBlock(block)
+	db := blockchain.GetDB()
 	db.Close()
+
 	for _, trans := range block.Transactions{
 		if trans.From != ""{
 			ChangeBalance(trans.From, 0 - trans.Amount)

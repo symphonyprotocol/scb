@@ -64,6 +64,9 @@ func (tx *Transaction) Verify() bool{
 		return false
 	}else{
 		address := recover_pubkey.ToAddressCompressed()
+		if tx.From == "" {
+			return address == tx.To
+		}
 		return address == tx.From
 	}
 }
