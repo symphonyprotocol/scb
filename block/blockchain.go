@@ -338,8 +338,12 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 		blockchain = bc
 	}
 
+	if bc.HasBlock(block.Header.Hash){
+		fmt.Errorf("block already exists")
+		return 
+	}
+
 	blockchain.verifyNewBlock(block)
-	fmt.Print(block.Header.Hash)
 	blockchain.CombineBlock(block)
 
 	for _, trans := range block.Transactions{

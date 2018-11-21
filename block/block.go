@@ -22,6 +22,8 @@ type BlockHeader struct{
 	Hash          []byte
 	Nonce         int64
 	Height		  int64
+	MinnerAddr    string
+	Signature 	  []byte	  
 }
 
 type Block struct {
