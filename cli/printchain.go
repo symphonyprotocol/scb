@@ -8,9 +8,6 @@ import (
 
 func (cli *CLI) printChain() {
 	bc := block.LoadBlockchain()
-	db := bc.GetDB()
-	defer db.Close()
-
 	bci := bc.Iterator()
 
 	for {

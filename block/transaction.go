@@ -8,6 +8,7 @@ import (
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"crypto/sha256"
 	"github.com/boltdb/bolt"
+	scbutils "github.com/symphonyprotocol/scb/utils"
 )
 
 
@@ -125,8 +126,6 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 	account := GetAccount(from)
 	
 	bc := LoadBlockchain()
-	db := bc.GetDB()
-	defer db.Close()
 
 	unpacktransactions := bc.FindUnpackTransaction(from)
 	if len(unpacktransactions) == 0{
@@ -144,8 +143,6 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 
 func Mine(address string) []* Transaction{
 	bc := LoadBlockchain()
-	db := bc.GetDB()
-	defer db.Close()
 
 	var transactions []* Transaction
 
@@ -164,7 +161,7 @@ func Mine(address string) []* Transaction{
 
 	bc.MineBlock(transactions, func(block *Block){
 
-		err := bc.db.Update(func(tx *bolt.Tx) error {
+		scbutils.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte(blocksBucket))
 			err := b.Put(block.Header.Hash, block.Serialize())
 			if err != nil {
@@ -180,14 +177,11 @@ func Mine(address string) []* Transaction{
 	
 			return nil
 		})
-		if err != nil {
-			log.Panic(err)
-		}
 
 		for _, v := range transactions{
-			bc.db.Update(func(tx *bolt.Tx) error {
+			scbutils.Update(func(tx *bolt.Tx) error {
 				b := tx.Bucket([]byte(packageBucket))
-				err = b.Delete(v.ID)
+				err := b.Delete(v.ID)
 				return err
 			})
 		}

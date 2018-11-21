@@ -4,6 +4,7 @@ import "encoding/gob"
 import "log"
 import "github.com/boltdb/bolt"
 import "fmt"
+import "github.com/symphonyprotocol/scb/utils"
 
 // const accountBucket = "account"
 
@@ -26,47 +27,38 @@ func (a *Account) Serialize() []byte {
 }
 
 func ChangeBalance(address string, balance int64){
-	db, err := bolt.Open(dbFile, 0600, nil)
-	defer db.Close()
-	if err != nil {
-		log.Panic(err)
-	}
-	err = db.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(accountBucket))
-		accountbytes := bucket.Get([]byte(address))
-		
-		var newbalance int64
-		var newnonce int64
-		var newaccount *Account
-
-		if accountbytes == nil{
-			newbalance = balance
-			newnonce = 0
+	utils.Update(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(accountBucket))
+			accountbytes := bucket.Get([]byte(address))
 			
-		}else{
-			account := DeserializeAccount(accountbytes)
-			newbalance = account.Balance + balance
-			newnonce =  account.Nonce + 1
-		}
-
-		if newbalance < 0 {
-			return fmt.Errorf("no enough amount")
-		}
-
-		newaccount = NewAccount(address, newbalance, newnonce)
-
-		if accountbytes == nil{
-			bucket.Put([]byte(address), newaccount.Serialize())
-		}else{
-			bucket.Delete([]byte(address))
-			bucket.Put([]byte(address), newaccount.Serialize())
-		}
-		return nil
-	})
-
-	if err != nil {
-		log.Panic(err)
-	}
+			var newbalance int64
+			var newnonce int64
+			var newaccount *Account
+	
+			if accountbytes == nil{
+				newbalance = balance
+				newnonce = 0
+				
+			}else{
+				account := DeserializeAccount(accountbytes)
+				newbalance = account.Balance + balance
+				newnonce =  account.Nonce + 1
+			}
+	
+			if newbalance < 0 {
+				return fmt.Errorf("no enough amount")
+			}
+	
+			newaccount = NewAccount(address, newbalance, newnonce)
+	
+			if accountbytes == nil{
+				bucket.Put([]byte(address), newaccount.Serialize())
+			}else{
+				bucket.Delete([]byte(address))
+				bucket.Put([]byte(address), newaccount.Serialize())
+			}
+			return nil
+		})
 }
 
 func GetBalance(address string) int64{
@@ -80,13 +72,9 @@ func GetBalance(address string) int64{
 }
 
 func GetAccount(address string) *Account{
-	db, err := bolt.Open(dbFile, 0600, nil)
-	defer db.Close()
-	if err != nil {
-		log.Panic(err)
-	}
+
 	var account *Account
-	err = db.View(func(tx *bolt.Tx) error {
+	utils.View(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(accountBucket))
 		accountbytes := bucket.Get([]byte(address))
 		if accountbytes != nil{
