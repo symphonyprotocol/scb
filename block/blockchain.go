@@ -406,12 +406,12 @@ func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
 }
 
 func (bc *Blockchain) HasBlock(hash []byte) bool {
-	var exists bool
+	var exists bool = false
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		blockbytes := b.Get(hash)
 		if nil != blockbytes{
-			exists = false
+			exists = true
 		}
 		return nil
 	})
