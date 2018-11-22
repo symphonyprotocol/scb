@@ -141,7 +141,7 @@ func (pow *ProofOfWork) Stop() {
 }
 
 // NewBlock creates and returns Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, coinbase string,  callback func(*Block, )) {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, coinbase string,  callback func(*Block, )) *ProofOfWork {
 	// rootHash := 
 	header := BlockHeader{
 		Timestamp: time.Now().Unix(),
@@ -166,6 +166,7 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, c
 			callback(block)
 		}
 	})
+	return pow
 }
 
 

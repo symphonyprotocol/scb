@@ -289,7 +289,7 @@ func(bc *Blockchain) GetBlockHeight() int64{
 }
 
 // MineBlock mines a new block with the provided transactions
-func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block)) {
+func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block)) *ProofOfWork {
 	var lastHash []byte
 	var lastHeight int64
 	for _, tx := range transactions{
@@ -315,7 +315,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 		return nil
 	})
 
-	NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block){
+	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block){
 		if nil != block{
 			block.Sign(privateKey)
 			callback(block)

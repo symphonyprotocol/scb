@@ -147,7 +147,7 @@ func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transacti
 	return trans
 }
 
-func Mine(wif string) []* Transaction{
+func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 	bc := LoadBlockchain()
 
 	var transactions []* Transaction
@@ -163,9 +163,9 @@ func Mine(wif string) []* Transaction{
 		log.Panic("no transaction can be mine")
 	}
 
-	flag := make(chan struct{})
+	// flag := make(chan struct{})
 
-	bc.MineBlock(wif, transactions,func(block *Block){
+	return bc.MineBlock(wif, transactions,func(block *Block) {
 
 		scbutils.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte(blocksBucket))
@@ -204,10 +204,13 @@ func Mine(wif string) []* Transaction{
 		// bc.AcceptNewBlock(block)
 
 
-		flag <- struct{}{}
+		// flag <- struct{}{}
+		if callback != nil {
+			callback(transactions)
+		}
 	})
-	<- flag
+	// <- flag
 
-	return transactions
+	// return transactions
 }
 
