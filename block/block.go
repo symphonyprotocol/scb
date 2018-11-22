@@ -10,6 +10,7 @@ import "crypto/sha256"
 import "github.com/symphonyprotocol/scb/utils"
 import sutils "github.com/symphonyprotocol/sutil/utils"
 import "github.com/symphonyprotocol/log"
+import "github.com/symphonyprotocol/sutil/elliptic"
 
 const targetBits = 8
 
@@ -17,13 +18,14 @@ var maxNonce = int64(math.MaxInt64)
 var blockLogger = log.GetLogger("scb")
 
 type BlockHeader struct{
-	Timestamp     int64
-	PrevBlockHash []byte
-	Hash          []byte
-	Nonce         int64
-	Height		  int64
-	MinnerAddr    string
-	Signature 	  []byte	  
+	Timestamp      int64
+	PrevBlockHash  []byte
+	Hash           []byte
+	Nonce          int64
+	Height		   int64
+	Coinbase       string
+	MerkleRootHash []byte
+	Signature 	   []byte	  
 }
 
 type Block struct {
@@ -76,6 +78,12 @@ func (b *Block) HashTransactions() []byte {
 	mTree := NewMerkleTree(transactions)
 
 	return mTree.RootNode.Data
+}
+
+func (b *Block) Sign(privKey *elliptic.PrivateKey){
+	blockbytes := b.Serialize()
+	sign_bytes, _ := elliptic.SignCompact(elliptic.S256(), privKey,  blockbytes, true)
+	b.Header.Signature = sign_bytes
 }
 
 func (h BlockHeader) HashString() string {
@@ -133,18 +141,23 @@ func (pow *ProofOfWork) Stop() {
 }
 
 // NewBlock creates and returns Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, callback func(*Block, )) {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, coinbase string,  callback func(*Block, )) {
+	// rootHash := 
 	header := BlockHeader{
 		Timestamp: time.Now().Unix(),
 		PrevBlockHash: prevBlockHash,
 		Hash: []byte{},
 		Nonce: 0,
 		Height: height,
+		Coinbase : coinbase,
 	}
 	block := &Block{
 		Header: header,
 		Transactions: transactions,
 	}
+	blockRootHash := block.HashTransactions()
+	block.Header.MerkleRootHash = blockRootHash
+
 	pow := NewProofOfWork(block)
 	pow.Run(func (nonce int64, hash []byte) {
 		block.Header.Hash = hash[:]
@@ -218,9 +231,17 @@ func (block *Block) VerifyHash() bool{
 }
 
 // NewGenesisBlock creates and returns genesis Block
-func NewGenesisBlock(trans *Transaction, callback func(*Block)) {
+func NewGenesisBlock(trans *Transaction, coinbase string,  callback func(*Block)) {
 	fmt.Println("New Genesis Block")
-	NewBlock([]*Transaction{trans}, []byte{}, 0, callback)
+	NewBlock([]*Transaction{trans}, []byte{}, 0, coinbase, callback)
 }
 
-
+ func (block *Block) VerifyCoinbase() bool{
+	recover_pubkey, compressed, err := elliptic.RecoverCompact(elliptic.S256(), block.Header.Signature, block.Serialize())
+	if err != nil || !compressed{
+		return false
+	}else{
+		address := recover_pubkey.ToAddressCompressed()
+		return address == block.Header.Coinbase
+	}
+ }

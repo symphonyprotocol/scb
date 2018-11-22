@@ -20,6 +20,7 @@ type Transaction struct {
 	To        string
 	Amount    int64
 	Signature []byte
+	Coinbase  bool
 }
 
 // Serialized Transaction
@@ -58,7 +59,7 @@ func (tx *Transaction) Sign(privKey *elliptic.PrivateKey){
 }
 
 func (tx *Transaction) Verify() bool{
-	trans := NewTransaction(tx.Nonce, tx.Amount, tx.From, tx.To)
+	trans := NewTransaction(tx.Nonce, tx.Amount, tx.From, tx.To, tx.Coinbase)
 	transbytes := trans.Serialize()
 	recover_pubkey, compressed, err := elliptic.RecoverCompact(elliptic.S256(), tx.Signature, transbytes)
 	if err != nil || !compressed{
@@ -86,13 +87,14 @@ func (tx *Transaction) SetID() {
 }
 
 
-func NewTransaction(nonce, amount int64, from, to string) *Transaction{
+func NewTransaction(nonce, amount int64, from, to string, coinbase bool) *Transaction{
 	trans := Transaction{
 		Nonce : nonce,
 		From : from,
 		To : to,
 		Amount: amount,
 		Signature: []byte(""),
+		Coinbase: coinbase,
 	}
 	trans.SetID()
 	return &trans
@@ -108,7 +110,7 @@ func GetMaxUnpackNonce(transactions []* Transaction) int64{
 	return nonce
 }
 
-func SendTo(from, to string, amount int64, wif string) *Transaction {
+func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transaction {
 	_, validFrom := elliptic.LoadAddress(from)
 	_, validTo := elliptic.LoadAddress(to)
 	prikey, _ := elliptic.LoadWIF(wif)
@@ -123,16 +125,20 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 		log.Panic("ERROR: Recipient address is not valid")
 	}
 
-	account := GetAccount(from)
+	account := GetAccount(from, coinbase)
+	if account.Balance < amount{
+		log.Panic("ERROR: No enougn amount")
+	}
+
 	
 	bc := LoadBlockchain()
 
 	unpacktransactions := bc.FindUnpackTransaction(from)
 	if len(unpacktransactions) == 0{
-		trans = NewTransaction(account.Nonce + 1, amount, from,to)
+		trans = NewTransaction(account.Nonce + 1, amount, from, to, coinbase)
 	}else{
 		nonce := GetMaxUnpackNonce(unpacktransactions)
-		trans = NewTransaction(nonce + 1, amount, from,to)
+		trans = NewTransaction(nonce + 1, amount, from,to, coinbase)
 	}
 
 	trans.Sign(private_key)
@@ -141,7 +147,7 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 	return trans
 }
 
-func Mine(address string) []* Transaction{
+func Mine(wif string) []* Transaction{
 	bc := LoadBlockchain()
 
 	var transactions []* Transaction
@@ -159,7 +165,7 @@ func Mine(address string) []* Transaction{
 
 	flag := make(chan struct{})
 
-	bc.MineBlock(transactions, func(block *Block){
+	bc.MineBlock(wif, transactions,func(block *Block){
 
 		scbutils.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte(blocksBucket))
@@ -172,7 +178,6 @@ func Mine(address string) []* Transaction{
 			if err != nil {
 				log.Panic(err)
 			}
-	
 			bc.tip = block.Header.Hash
 	
 			return nil
@@ -180,10 +185,19 @@ func Mine(address string) []* Transaction{
 
 		for _, v := range transactions{
 			scbutils.Update(func(tx *bolt.Tx) error {
-				b := tx.Bucket([]byte(packageBucket))
+				b := tx.Bucket([]byte(transactionBucket))
 				err := b.Delete(v.ID)
 				return err
 			})
+		}
+		for _, v := range transactions{
+			if v.Coinbase{
+				ChangeBalance(v.From, v.Amount, false)
+				ChangeBalance(v.From, 0 - v.Amount, true)
+			}else{
+				ChangeBalance(v.From, 0 - v.Amount, false)
+				ChangeBalance(v.To, v.Amount, false)
+			}
 		}
 
 		//for test

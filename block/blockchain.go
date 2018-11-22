@@ -13,7 +13,8 @@ import (
 
 const blocksBucket = "blocks"
 const accountBucket = "account"
-const packageBucket = "packages"
+const transactionBucket = "transaction"
+const gasBucket = "gas"
 // 挖矿奖励金
 const Subsidy = 100
 
@@ -113,7 +114,12 @@ func CreateEmptyBlockchain() *Blockchain {
 			log.Panic(err)
 		}
 
-		_, err2 := tx.CreateBucket([]byte(packageBucket))
+		_, err2 := tx.CreateBucket([]byte(transactionBucket))
+		if err2 != nil {
+			log.Panic(err)
+		}
+		_, err2 = tx.CreateBucket([]byte(gasBucket))
+
 		if err2 != nil {
 			log.Panic(err)
 		}
@@ -126,22 +132,24 @@ func CreateEmptyBlockchain() *Blockchain {
 }
 
 // new blockchain with genesis Block
-func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
+func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	if dbExists() {
 		fmt.Println("Blockchain already exists.")
 		os.Exit(1)
 	}
 
 	prikey, _ := elliptic.LoadWIF(wif)
-	privateKey, _ := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
-	
+	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
+	address := publickey.ToAddressCompressed()
+	account := InitAccount(address)
+
 	var tip []byte
 
-	account := InitAccount(address)
-	trans := NewTransaction(account.Nonce, Subsidy, "", address)
+	trans := NewTransaction(account.Nonce, Subsidy, "", address, true)
 	trans.Sign(privateKey)
 
-	NewGenesisBlock(trans, func (genesis *Block) {
+	NewGenesisBlock(trans, address, func (genesis *Block) {
+		genesis.Sign(privateKey)
 
 		utils.Update(func(tx *bolt.Tx) error {
 			b, err := tx.CreateBucket([]byte(accountBucket))
@@ -159,7 +167,12 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 				log.Panic(err)
 			}
 	
-			_, err2 := tx.CreateBucket([]byte(packageBucket))
+			_, err2 := tx.CreateBucket([]byte(transactionBucket))
+			if err2 != nil {
+				log.Panic(err)
+			}
+
+			_, err2 = tx.CreateBucket([]byte(gasBucket))
 			if err2 != nil {
 				log.Panic(err)
 			}
@@ -177,6 +190,7 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 	
 			return nil
 		})
+		ChangeBalance(genesis.Header.Coinbase, Subsidy, true)
 		bc := Blockchain{tip}
 		if callback != nil {
 			callback(&bc)
@@ -186,7 +200,7 @@ func CreateBlockchain(address, wif string, callback func(*Blockchain)) {
 
 func(bc *Blockchain) SaveTransaction(trans *Transaction){
 	utils.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packageBucket))
+		b := tx.Bucket([]byte(transactionBucket))
 		err := b.Put(trans.ID, trans.Serialize())
 		if err != nil {
 			log.Panic(err)
@@ -200,7 +214,7 @@ func(bc *Blockchain) FindUnpackTransactionById(id []byte) *Transaction{
 	var transaction *Transaction
 
 	utils.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packageBucket))
+		b := tx.Bucket([]byte(transactionBucket))
 		c := b.Cursor()
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -221,7 +235,7 @@ func(bc *Blockchain) FindUnpackTransaction(address string) []* Transaction{
 	var transactions []* Transaction
 
 	utils.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packageBucket))
+		b := tx.Bucket([]byte(transactionBucket))
 		c := b.Cursor()
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -242,7 +256,7 @@ func (bc *Blockchain) FindAllUnpackTransaction() map[string] []* Transaction {
 	trans_map = make(map[string] []* Transaction)
 
 	utils.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(packageBucket))
+		b := tx.Bucket([]byte(transactionBucket))
 		c := b.Cursor()
 
 		for k, v := c.First(); k != nil; k, v = c.Next() {
@@ -275,7 +289,7 @@ func(bc *Blockchain) GetBlockHeight() int64{
 }
 
 // MineBlock mines a new block with the provided transactions
-func (bc *Blockchain) MineBlock(transactions []*Transaction, callback func(* Block)) {
+func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block)) {
 	var lastHash []byte
 	var lastHeight int64
 	for _, tx := range transactions{
@@ -283,6 +297,12 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction, callback func(* Blo
 			log.Panic("ERROR: Invalid transaction")
 		}
 	}
+
+	prikey, _ := elliptic.LoadWIF(wif)
+	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
+	address := publickey.ToAddressCompressed()
+	// account := InitAccount(address)
+
 
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
@@ -295,8 +315,9 @@ func (bc *Blockchain) MineBlock(transactions []*Transaction, callback func(* Blo
 		return nil
 	})
 
-	NewBlock(transactions, lastHash, lastHeight + 1, func(block * Block){
+	NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block){
 		if nil != block{
+			block.Sign(privateKey)
 			callback(block)
 		}
 	})
@@ -346,12 +367,12 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 	blockchain.verifyNewBlock(block)
 	blockchain.CombineBlock(block)
 
-	for _, trans := range block.Transactions{
-		if trans.From != ""{
-			ChangeBalance(trans.From, 0 - trans.Amount)
-		}
-		ChangeBalance(trans.To, trans.Amount)
-	}
+	// for _, trans := range block.Transactions{
+	// 	if trans.From != ""{
+	// 		ChangeBalance(trans.From, 0 - trans.Amount)
+	// 	}
+	// 	ChangeBalance(trans.To, trans.Amount)
+	// }
 	// *bc = *LoadBlockchain()
 }
 

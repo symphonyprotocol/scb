@@ -5,11 +5,11 @@ import (
 	"github.com/symphonyprotocol/scb/block"
 )
 
-func (cli *CLI) CreateBlockchain(address, wif string) {
+func (cli *CLI) CreateBlockchain(wif string) {
 	flag := make(chan struct{})
 
-	 block.CreateBlockchain(address, wif, func(bc *block.Blockchain){
-		block.ChangeBalance(address, block.Subsidy)
+	 block.CreateBlockchain(wif, func(bc *block.Blockchain){
+		fmt.Println("create block chain done")
 		flag <- struct{}{}
 	})
 	<-flag

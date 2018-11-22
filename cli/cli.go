@@ -14,7 +14,7 @@ type CLI struct{}
 
 func (cli *CLI) Run() {
 	createBlockchainCmd := flag.NewFlagSet("createblockchain", flag.ExitOnError)
-	createBlockchainAddress := createBlockchainCmd.String("address", "", "The address to send genesis block reward to")
+	// createBlockchainAddress := createBlockchainCmd.String("address", "", "The address to send genesis block reward to")
 	createBlockchainWif := createBlockchainCmd.String("wif", "", "your wif private key")
 
 	sendCmd := flag.NewFlagSet("send", flag.ExitOnError)
@@ -22,6 +22,7 @@ func (cli *CLI) Run() {
 	sendTo := sendCmd.String("to", "", "Destination wallet address")
 	sendAmount := sendCmd.Int64("amount", 0, "Amount to send")
 	wif := sendCmd.String("wif", "", "your wif private key")
+	coinbase := sendCmd.Bool("coinbase", false, "is coinbase, true or false")
 
 	getBalanceCmd := flag.NewFlagSet("getbalance", flag.ExitOnError)
 	getBalanceAddress := getBalanceCmd.String("address", "", "The address to get balance for")
@@ -29,7 +30,7 @@ func (cli *CLI) Run() {
 	printChainCmd := flag.NewFlagSet("printchain", flag.ExitOnError)
 
 	mineCmd := flag.NewFlagSet("mine", flag.ExitOnError)
-	mineAddress := mineCmd.String("address", "", "miner address")
+	mineAddress := mineCmd.String("wif", "", "miner wif")
 
 
 	switch os.Args[1] {
@@ -61,11 +62,11 @@ func (cli *CLI) Run() {
 
 	}
 	if createBlockchainCmd.Parsed() {
-		if *createBlockchainAddress == "" {
-			createBlockchainCmd.Usage()
-			os.Exit(1)
-		}
-		cli.CreateBlockchain(*createBlockchainAddress, *createBlockchainWif)
+		// if *createBlockchainAddress == "" {
+		// 	createBlockchainCmd.Usage()
+		// 	os.Exit(1)
+		// }
+		cli.CreateBlockchain(*createBlockchainWif)
 	}
 	if sendCmd.Parsed() {
 		if *sendFrom == "" || *sendTo == "" || *sendAmount <= 0 {
@@ -73,7 +74,7 @@ func (cli *CLI) Run() {
 			os.Exit(1)
 		}
 
-	cli.Send(*sendFrom, *sendTo,*wif, *sendAmount)
+	cli.Send(*sendFrom, *sendTo,*wif, *sendAmount, *coinbase)
 	}
 	if getBalanceCmd.Parsed() {
 		if *getBalanceAddress == "" {

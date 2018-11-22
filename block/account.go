@@ -26,9 +26,18 @@ func (a *Account) Serialize() []byte {
 	return result.Bytes()
 }
 
-func ChangeBalance(address string, balance int64){
+func ChangeBalance(address string, balance int64, isGas bool){
+
+	
 	utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(accountBucket))
+			var bucket *bolt.Bucket
+
+			if isGas{
+				bucket = tx.Bucket([]byte(gasBucket))
+			}else{
+				bucket = tx.Bucket([]byte(accountBucket))
+			}
+			
 			accountbytes := bucket.Get([]byte(address))
 			
 			var newbalance int64
@@ -61,21 +70,28 @@ func ChangeBalance(address string, balance int64){
 		})
 }
 
-func GetBalance(address string) int64{
+
+
+
+func GetBalance(address string, isGas bool) int64{
 	var balance int64 = 0
-	account := GetAccount(address)
+	account := GetAccount(address, isGas)
 	if account != nil{
 		balance = account.Balance
 	}
-	fmt.Printf("balance is: %v\n", balance)
+	// fmt.Printf("balance is: %v\n", balance)
 	return balance
 }
 
-func GetAccount(address string) *Account{
-
+func GetAccount(address string, isGas bool) *Account{
 	var account *Account
 	utils.View(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(accountBucket))
+		var bucket *bolt.Bucket
+		if isGas{
+			bucket = tx.Bucket([]byte(gasBucket))
+		}else{
+			bucket = tx.Bucket([]byte(accountBucket))
+		}
 		accountbytes := bucket.Get([]byte(address))
 		if accountbytes != nil{
 			account = DeserializeAccount(accountbytes)
