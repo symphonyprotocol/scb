@@ -9,7 +9,6 @@ import (
 	"crypto/sha256"
 	"github.com/boltdb/bolt"
 	scbutils "github.com/symphonyprotocol/scb/utils"
-	"encoding/binary"
 )
 
 

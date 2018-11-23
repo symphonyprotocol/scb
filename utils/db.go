@@ -1,16 +1,22 @@
 package utils
-import "github.com/boltdb/bolt"
-import osuser "os/user"
-import "log"
+import (
+	// "sync"
+	"github.com/boltdb/bolt"
+	osuser "os/user"
+	"log"
+)
 
 
 var(
+	// dbHardLock = sync.RWMutex{}
 	CURRENT_USER, _ = osuser.Current()
 	dbFile = CURRENT_USER.HomeDir + "/.blockchain.db"
 )
 
 
 func Update(upfunc func(tx *bolt.Tx) error) {
+	// dbHardLock.Lock()
+	// defer dbHardLock.Unlock()
 	db, err := bolt.Open(dbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
@@ -23,6 +29,8 @@ func Update(upfunc func(tx *bolt.Tx) error) {
 }
 
 func View(upfunc func(tx *bolt.Tx) error) {
+	// dbHardLock.Lock()
+	// defer dbHardLock.Unlock()
 	db, err := bolt.Open(dbFile, 0600, nil)
 	if err != nil {
 		log.Panic(err)
