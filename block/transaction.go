@@ -127,7 +127,8 @@ func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transacti
 	}
 
 	account := GetAccount(from, coinbase)
-	if account.Balance < amount{
+
+	if account.Balance < amount && !coinbase{
 		log.Panic("ERROR: No enougn amount")
 	}
 
@@ -139,7 +140,7 @@ func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transacti
 		trans = NewTransaction(account.Nonce + 1, amount, from, to, coinbase)
 	}else{
 		nonce := GetMaxUnpackNonce(unpacktransactions)
-		trans = NewTransaction(nonce + 1, amount, from,to, coinbase)
+		trans = NewTransaction(nonce + 1, amount, from, to, coinbase)
 	}
 
 	trans.Sign(private_key)
@@ -166,7 +167,7 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 
 	// flag := make(chan struct{})
 
-	return bc.MineBlock(wif, transactions,func(block *Block) {
+	provework := bc.MineBlock(wif, transactions, func(block *Block) {
 
 		scbutils.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte(blocksBucket))
@@ -184,6 +185,8 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 			return nil
 		})
 		
+		ChangeBalance(block.Header.Coinbase, Subsidy, true)
+
 		//save transaction block map 
 		for _, trans := range transactions{
 			scbutils.Update(func(tx *bolt.Tx) error {
@@ -206,6 +209,7 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 				return err
 			})
 		}
+
 		for _, v := range transactions{
 			if v.Coinbase{
 				ChangeBalance(v.From, v.Amount, false)
@@ -227,6 +231,6 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 	})
 	// <- flag
 
-	// return transactions
+	return provework
 }
 
