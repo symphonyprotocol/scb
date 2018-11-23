@@ -9,6 +9,7 @@ import (
 	"fmt"
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"github.com/symphonyprotocol/scb/utils"
+	// "encoding/binary"
 	"strconv"
 )
 
