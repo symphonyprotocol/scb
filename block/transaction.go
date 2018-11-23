@@ -9,6 +9,7 @@ import (
 	"crypto/sha256"
 	"github.com/boltdb/bolt"
 	scbutils "github.com/symphonyprotocol/scb/utils"
+	"encoding/binary"
 )
 
 
@@ -182,6 +183,21 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 	
 			return nil
 		})
+		
+		//save transaction block map 
+		for _, trans := range transactions{
+			scbutils.Update(func(tx *bolt.Tx) error {
+				b := tx.Bucket([]byte(transactionMapBucket))
+				buf := make([]byte, binary.MaxVarintLen64)
+				len := binary.PutVarint(buf, block.Header.Height)
+				buf = buf[0:len]
+				err := b.Put(trans.ID, buf)
+				if err != nil {
+					log.Panic(err)
+				}
+				return nil
+			})
+		}
 
 		for _, v := range transactions{
 			scbutils.Update(func(tx *bolt.Tx) error {

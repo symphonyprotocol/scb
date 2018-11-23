@@ -9,12 +9,14 @@ import (
 	"fmt"
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"github.com/symphonyprotocol/scb/utils"
+	"encoding/binary"
 )
 
 const blocksBucket = "blocks"
 const accountBucket = "account"
-const transactionBucket = "transaction"
+const transactionBucket = "transaction_pool"
 const gasBucket = "gas"
+const transactionMapBucket = "transaction"
 // 挖矿奖励金
 const Subsidy = 100
 
@@ -114,6 +116,11 @@ func CreateEmptyBlockchain() *Blockchain {
 			log.Panic(err)
 		}
 
+		_, err = tx.CreateBucket([]byte(transactionMapBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
 		_, err2 := tx.CreateBucket([]byte(transactionBucket))
 		if err2 != nil {
 			log.Panic(err)
@@ -167,16 +174,6 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 				log.Panic(err)
 			}
 	
-			_, err2 := tx.CreateBucket([]byte(transactionBucket))
-			if err2 != nil {
-				log.Panic(err)
-			}
-
-			_, err2 = tx.CreateBucket([]byte(gasBucket))
-			if err2 != nil {
-				log.Panic(err)
-			}
-	
 			err = b.Put(genesis.Header.Hash, genesis.Serialize())
 			if err != nil {
 				log.Panic(err)
@@ -187,6 +184,31 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 				log.Panic(err)
 			}
 			tip = genesis.Header.Hash
+
+
+			b, err = tx.CreateBucket([]byte(transactionMapBucket))
+			if err != nil {
+				log.Panic(err)
+			}
+			
+			//save transaction block map 
+			buf := make([]byte, binary.MaxVarintLen64)
+			len := binary.PutVarint(buf, genesis.Header.Height)
+			buf = buf[0:len]
+			err = b.Put(trans.ID, buf)
+			if err != nil {
+				log.Panic(err)
+			}
+
+			_, err2 := tx.CreateBucket([]byte(transactionBucket))
+			if err2 != nil {
+				log.Panic(err)
+			}
+
+			_, err2 = tx.CreateBucket([]byte(gasBucket))
+			if err2 != nil {
+				log.Panic(err)
+			}
 	
 			return nil
 		})
@@ -348,6 +370,11 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 	if !trans_res{
 		log.Panic("block transaction verify fail")
 	}
+	//4. verify block signature
+	coinbase_res := block.VerifyCoinbase()
+	if !coinbase_res{
+		log.Panic("block signature verify fail")
+	}
 }
 
 func(bc *Blockchain) AcceptNewBlock(block *Block){
@@ -367,12 +394,35 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 	blockchain.verifyNewBlock(block)
 	blockchain.CombineBlock(block)
 
+	//delete packed transaction
+	for _, trans := range block.Transactions{
+		utils.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(transactionBucket))
+			err := b.Delete(trans.ID)
+			if err != nil {
+				log.Panic(err)
+			}
+			return nil
+		})
+	}
+	
+	for _, v := range block.Transactions{
+		if v.Coinbase{
+			ChangeBalance(v.From, v.Amount, false)
+			ChangeBalance(v.From, 0 - v.Amount, true)
+		}else{
+			ChangeBalance(v.From, 0 - v.Amount, false)
+			ChangeBalance(v.To, v.Amount, false)
+		}
+	}
+
 	// for _, trans := range block.Transactions{
 	// 	if trans.From != ""{
 	// 		ChangeBalance(trans.From, 0 - trans.Amount)
 	// 	}
 	// 	ChangeBalance(trans.To, trans.Amount)
 	// }
+
 	// *bc = *LoadBlockchain()
 }
 
