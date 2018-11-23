@@ -204,10 +204,10 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 			}
 			
 			//save transaction block map 
-			buf := make([]byte, binary.MaxVarintLen64)
-			len := binary.PutVarint(buf, genesis.Header.Height)
-			buf = buf[0:len]
-			err = b.Put(trans.ID, buf)
+			// buf := make([]byte, binary.MaxVarintLen64)
+			// len := binary.PutVarint(buf, genesis.Header.Height)
+			// buf = buf[0:len]
+			err = b.Put(trans.ID, genesis.Header.Hash)
 			if err != nil {
 				log.Panic(err)
 			}

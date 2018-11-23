@@ -191,10 +191,10 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 		for _, trans := range transactions{
 			scbutils.Update(func(tx *bolt.Tx) error {
 				b := tx.Bucket([]byte(transactionMapBucket))
-				buf := make([]byte, binary.MaxVarintLen64)
-				len := binary.PutVarint(buf, block.Header.Height)
-				buf = buf[0:len]
-				err := b.Put(trans.ID, buf)
+				// buf := make([]byte, binary.MaxVarintLen64)
+				// len := binary.PutVarint(buf, block.Header.Height)
+				// buf = buf[0:len]
+				err := b.Put(trans.ID, block.Header.Hash)
 				if err != nil {
 					log.Panic(err)
 				}
