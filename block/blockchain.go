@@ -42,6 +42,8 @@ type BlockchainIterator struct {
 // Iterator returns a BlockchainIterat
 func (bc *Blockchain) Iterator() *BlockchainIterator {
 	// bci := &BlockchainIterator{bc.tip, bc.db}
+	_bc := LoadBlockchain()
+	bc.tip = _bc.tip
 	bci := &BlockchainIterator{bc.tip}
 	return bci
 }

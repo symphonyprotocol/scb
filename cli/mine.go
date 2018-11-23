@@ -2,7 +2,12 @@ package cli
 import "github.com/symphonyprotocol/scb/block"
 
 func(cli *CLI) Mine(wif string){
-	block.Mine(wif)
+	sign := make(chan struct{})
+	block.Mine(wif, func ([] *block.Transaction) {
+		sign <- struct{}{}
+	})
+
+	<- sign
 
 	// block.ChangeBalance(address, block.Subsidy)
 	// for _, trans := range transactions{
