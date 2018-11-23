@@ -9,7 +9,7 @@ import (
 	"crypto/sha256"
 	"github.com/boltdb/bolt"
 	scbutils "github.com/symphonyprotocol/scb/utils"
-	"encoding/binary"
+	// "encoding/binary"
 )
 
 
@@ -227,6 +227,7 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 		// flag <- struct{}{}
 		if callback != nil {
 			callback(transactions)
+
 		}
 	})
 	// <- flag
