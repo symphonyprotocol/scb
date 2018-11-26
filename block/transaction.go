@@ -185,7 +185,7 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 			return nil
 		})
 		
-		ChangeBalance(block.Header.Coinbase, Subsidy, true)
+		// ChangeBalance(block.Header.Coinbase, Subsidy, true)
 
 		//save transaction block map 
 		for _, trans := range transactions{

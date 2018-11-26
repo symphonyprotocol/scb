@@ -160,6 +160,7 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	prikey, _ := elliptic.LoadWIF(wif)
 	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
 	address := publickey.ToAddressCompressed()
+	fmt.Printf("address from wif %v\n", address)
 	account := InitAccount(address)
 
 	var tip []byte
@@ -336,7 +337,8 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
 	address := publickey.ToAddressCompressed()
 	// account := InitAccount(address)
-
+	fmt.Printf("address from wif %v\n", address)
+	
 
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
@@ -352,6 +354,11 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block){
 		if nil != block{
 			block.Sign(privateKey)
+			fmt.Println("============mine block done , reward miner ===============")
+			fmt.Printf("block.Header.Coinbase %v", block.Header.Coinbase)
+			fmt.Printf("address from wif %v", address)
+			ChangeBalance(block.Header.Coinbase, Subsidy, true)
+			fmt.Println("============reward miner ok ===============")
 			callback(block)
 		}
 	})
@@ -420,8 +427,13 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 	
 	for _, v := range block.Transactions{
 		if v.Coinbase{
-			ChangeBalance(v.From, v.Amount, false)
-			ChangeBalance(v.From, 0 - v.Amount, true)
+			if v.From == ""{
+				// 创世交易
+				ChangeBalance(v.To, v.Amount, true)
+			}else{
+				ChangeBalance(v.From, v.Amount, false)
+				ChangeBalance(v.From, 0 - v.Amount, true)
+			}
 		}else{
 			ChangeBalance(v.From, 0 - v.Amount, false)
 			ChangeBalance(v.To, v.Amount, false)
