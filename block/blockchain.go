@@ -419,6 +419,18 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 		ChangeBalance(block.Header.Coinbase, Subsidy, true)
 	}
 
+	//save transaction
+	for _, trans := range block.Transactions{
+		utils.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(transactionMapBucket))
+			err := b.Put(trans.ID, block.Header.Hash)
+			if err != nil {
+				log.Panic(err)
+			}
+			return nil
+		})
+	}
+
 	//delete packed transaction
 	for _, trans := range block.Transactions{
 		utils.Update(func(tx *bolt.Tx) error {
@@ -432,6 +444,7 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 		})
 	}
 	
+	//change balance
 	for _, v := range block.Transactions{
 		if v.Coinbase{
 			if v.From == ""{
