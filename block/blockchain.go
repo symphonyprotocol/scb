@@ -357,6 +357,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 			fmt.Println("============mine block done , reward miner ===============")
 			fmt.Printf("block.Header.Coinbase %v", block.Header.Coinbase)
 			fmt.Printf("address from wif %v", address)
+			//reward miner
 			ChangeBalance(block.Header.Coinbase, Subsidy, true)
 			fmt.Println("============reward miner ok ===============")
 			callback(block)
@@ -412,6 +413,11 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 
 	blockchain.verifyNewBlock(block)
 	blockchain.CombineBlock(block)
+	
+	// reward miner
+	if block.Header.Height > 0{
+		ChangeBalance(block.Header.Coinbase, Subsidy, true)
+	}
 
 	//delete packed transaction
 	for _, trans := range block.Transactions{
@@ -419,7 +425,8 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 			b := tx.Bucket([]byte(transactionBucket))
 			err := b.Delete(trans.ID)
 			if err != nil {
-				log.Panic(err)
+				// log.Panic(err)
+				fmt.Printf("an error when delete:%v", err.Error)
 			}
 			return nil
 		})

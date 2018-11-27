@@ -95,6 +95,10 @@ func GetAccount(address string, isGas bool) *Account{
 		accountbytes := bucket.Get([]byte(address))
 		if accountbytes != nil{
 			account = DeserializeAccount(accountbytes)
+		}else{
+			// bucket.Put()
+			account = NewAccount(address, 0, 0)
+			bucket.Put([]byte(address), account.Serialize())
 		}
 		return nil
 	})
