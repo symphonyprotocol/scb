@@ -40,6 +40,26 @@ type ProofOfWork struct {
 	quitSign	chan struct{}
 }
 
+//implements the Content interface provided by merkletree and represents the content stored in the tree.
+type BlockContent struct {
+	X []byte
+}
+  
+//CalculateHash hashes the values of a TestContent
+func (t BlockContent) CalculateHash() ([]byte, error) {
+h := sha256.New()
+if _, err := h.Write(t.X); err != nil {
+	return nil, err
+}
+
+return h.Sum(nil), nil
+}
+  
+//Equals tests for equality of two Contents
+func (t BlockContent) Equals(other Content) (bool, error) {
+return bytes.Compare(t.X, other.(BlockContent).X) == 0, nil
+}
+
 
 // Serializes the block
 func (b *Block) Serialize() []byte {
@@ -70,14 +90,18 @@ func DeserializeBlock(d []byte) *Block {
 
 // Hash transactions with merkle tree
 func (b *Block) HashTransactions() []byte {
-	var transactions [][]byte
+	// var transactions [][]byte
+	var transactions []Content
 
 	for _, tx := range b.Transactions {
-		transactions = append(transactions, tx.Serialize())
+		transactions = append(transactions, BlockContent{X : tx.Serialize()})
 	}
-	mTree := NewMerkleTree(transactions)
 
-	return mTree.RootNode.Data
+	mTree, err := NewTree(transactions)
+	if err == nil{
+		return mTree.MerkleRoot()
+	}
+	return nil
 }
 
 func (b *Block) Sign(privKey *elliptic.PrivateKey){

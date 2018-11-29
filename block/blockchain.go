@@ -339,7 +339,6 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 	// account := InitAccount(address)
 	fmt.Printf("address from wif %v\n", address)
 	
-
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		lastHash0 := b.Get([]byte("l"))
