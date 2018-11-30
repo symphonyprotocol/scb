@@ -364,7 +364,6 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 	})
 }
 
-
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	//1. verify block POW
 	pow_res := block.VerifyPow()
@@ -394,7 +393,13 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 	if !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
+	
+	//5. verify block merkle root hash
+	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
+		log.Panic("merkle root hash verify fail")
+	}
 }
+
 
 func(bc *Blockchain) AcceptNewBlock(block *Block){
 	var blockchain *Blockchain

@@ -247,6 +247,18 @@ func (block *Block) VerifyPow() bool{
 	hashInt.SetBytes(hash[:])
 	return hashInt.Cmp(target) == -1
 }
+func(block *Block) VerifyMerkleHash() bool{
+		var transactions []Content
+		for _, tx := range block.Transactions {
+			transactions = append(transactions, BlockContent{X : tx.Serialize()})
+		}
+		mTree, err := NewTree(transactions)
+		var calcHash []byte
+		if err == nil{
+			calcHash = mTree.MerkleRoot()
+		}
+		return bytes.Compare(calcHash, block.Header.MerkleRootHash) == 0
+}
 
 func (block *Block) VerifyHash() bool{
 	data := block.prepareData()
