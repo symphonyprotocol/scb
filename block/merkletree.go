@@ -233,3 +233,92 @@ func (m *MerkleTree) String() string {
 	}
 	return s
 }
+
+func GetNodeBrother(node *Node) *Node{
+	par_node := node.Parent
+	if par_node == nil{
+		return nil
+	}
+	// ok, err := par_node.Left.C.Equals(node.C)
+	// if ok && err == nil{
+	// 	return par_node.Right
+	// }
+	// ok_r, err_r := par_node.Right.C.Equals(node.C)
+	// if ok_r && err_r == nil{
+	// 	return par_node.Left
+	// }
+	if bytes.Compare(par_node.Left.Hash, node.Hash) == 0{
+		return par_node.Right
+	}else if bytes.Compare(par_node.Right.Hash, node.Hash) == 0{
+		return par_node.Left
+	}else{
+		return nil
+	}
+}
+
+func(m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
+	var paths [][] byte
+
+	var node *Node
+
+	for _, l := range m.Leafs {
+		ok, err := l.C.Equals(content)
+		if err != nil {
+			return nil , err
+		}
+		if ok{
+			node = l
+			break
+		}
+	}
+
+	for true{
+		if node.Parent == nil{
+			break
+		}
+		brother := GetNodeBrother(node)
+		if brother != nil{
+			paths = append(paths, brother.Hash)
+			node = node.Parent
+		}else{
+			break
+		}
+	}
+
+	return paths, nil
+}
+// func (m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
+// 	var paths [][] byte
+
+// 	var node *Node
+
+// 	for _, l := range m.Leafs {
+// 		ok, err := l.C.Equals(content)
+// 		if err != nil {
+// 			return nil , err
+// 		}
+// 		if ok{
+// 			// if l.Parent.Left.C.Equals(content)
+// 			node = l
+// 			break
+// 		}
+// 	}
+	
+// 	var cont Content = content
+
+// 	for true{
+// 		ok, err := node.C.Equals(cont)
+// 		if err != nil {
+// 			return nil , err
+// 		}
+// 		if ok{
+// 			if node.Parent == nil{
+// 				break
+// 			}
+// 			if
+// 		}
+
+// 	}
+
+// 	return paths, nil
+// }
