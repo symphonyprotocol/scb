@@ -1,6 +1,7 @@
 package block
 
 import (
+	// "github.com/symphonyprotocol/scb/block"
 	"bytes"
 	"github.com/boltdb/bolt"
 	"os"
@@ -393,7 +394,7 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 	if !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
-	
+
 	//5. verify block merkle root hash
 	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
 		log.Panic("merkle root hash verify fail")
@@ -539,6 +540,34 @@ func (bc *Blockchain) HasBlock(hash []byte) bool {
 		return nil
 	})
 	return exists
+}
+
+// revert block chain to specific height
+func RevertTo(Height int64){
+	chain := LoadBlockchain()
+	bci := chain.Iterator()
+
+	for{
+		b := bci.Next()
+		if len(b.Header.PrevBlockHash) == 0 {
+			break
+		}		
+		if b.Header.Height > Height{
+			utils.Update(func(tx *bolt.Tx) error {
+				bucket := tx.Bucket([]byte(blocksBucket))
+				bucket.Delete(b.Header.Hash)
+				return nil
+			})	
+		}
+		if b.Header.Height == Height{
+			utils.Update(func(tx *bolt.Tx) error {
+				bucket := tx.Bucket([]byte(blocksBucket))
+				bucket.Delete([]byte("l"))
+				bucket.Put([]byte("l"), b.Header.Hash)
+				return nil
+			})	
+		}
+	}
 }
 
 func PrintChain() {
