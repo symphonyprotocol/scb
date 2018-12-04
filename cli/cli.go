@@ -22,7 +22,7 @@ func (cli *CLI) Run() {
 	sendTo := sendCmd.String("to", "", "Destination wallet address")
 	sendAmount := sendCmd.Int64("amount", 0, "Amount to send")
 	wif := sendCmd.String("wif", "", "your wif private key")
-	coinbase := sendCmd.Bool("coinbase", false, "is coinbase, true or false")
+	coinbase := sendCmd.String("coinbase", "", "if transaction is coinbase, empty will be false other will be true")
 
 	getBalanceCmd := flag.NewFlagSet("getbalance", flag.ExitOnError)
 	getBalanceAddress := getBalanceCmd.String("address", "", "The address to get balance for")
@@ -73,8 +73,13 @@ func (cli *CLI) Run() {
 			sendCmd.Usage()
 			os.Exit(1)
 		}
-
-	cli.Send(*sendFrom, *sendTo,*wif, *sendAmount, *coinbase)
+		var flag bool
+		if *coinbase == ""{
+			flag = false
+		}else{
+			flag = true
+		}
+		cli.Send(*sendFrom, *sendTo,*wif, *sendAmount, flag)
 	}
 	if getBalanceCmd.Parsed() {
 		if *getBalanceAddress == "" {

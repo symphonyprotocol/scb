@@ -47,17 +47,17 @@ type BlockContent struct {
   
 //CalculateHash hashes the values of a TestContent
 func (t BlockContent) CalculateHash() ([]byte, error) {
-h := sha256.New()
-if _, err := h.Write(t.X); err != nil {
-	return nil, err
-}
+	h := sha256.New()
+	if _, err := h.Write(t.X); err != nil {
+		return nil, err
+	}
 
-return h.Sum(nil), nil
+	return h.Sum(nil), nil
 }
   
 //Equals tests for equality of two Contents
 func (t BlockContent) Equals(other Content) (bool, error) {
-return bytes.Compare(t.X, other.(BlockContent).X) == 0, nil
+	return bytes.Compare(t.X, other.(BlockContent).X) == 0, nil
 }
 
 
@@ -273,7 +273,7 @@ func NewGenesisBlock(trans *Transaction, coinbase string,  callback func(*Block)
 	NewBlock([]*Transaction{trans}, []byte{}, 0, coinbase, callback)
 }
 
- func (block *Block) VerifyCoinbase() bool{
+func (block *Block) VerifyCoinbase() bool{
 	recover_pubkey, compressed, err := elliptic.RecoverCompact(elliptic.S256(), block.Header.Signature, block.Serialize())
 	if err != nil || !compressed{
 		return false
@@ -281,4 +281,17 @@ func NewGenesisBlock(trans *Transaction, coinbase string,  callback func(*Block)
 		address := recover_pubkey.ToAddressCompressed()
 		return address == block.Header.Coinbase
 	}
+ }
+
+ func (block *Block) VerifyTransaction() bool{
+	var res bool
+	for _, trans := range block.Transactions{
+		if trans.Verify(){
+			res = true
+		}else{
+			res = false
+			break
+		}
+	}
+	return res
  }

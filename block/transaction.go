@@ -7,8 +7,8 @@ import (
 	"log"
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"crypto/sha256"
-	"github.com/boltdb/bolt"
-	scbutils "github.com/symphonyprotocol/scb/utils"
+	// "github.com/boltdb/bolt"
+	// scbutils "github.com/symphonyprotocol/scb/utils"
 	// "encoding/binary"
 )
 
@@ -169,56 +169,57 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 
 	provework := bc.MineBlock(wif, transactions, func(block *Block) {
 
-		scbutils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(blocksBucket))
-			err := b.Put(block.Header.Hash, block.Serialize())
-			if err != nil {
-				log.Panic(err)
-			}
+		bc.AcceptNewBlock(block)
+		// scbutils.Update(func(tx *bolt.Tx) error {
+		// 	b := tx.Bucket([]byte(blocksBucket))
+		// 	err := b.Put(block.Header.Hash, block.Serialize())
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
 	
-			err = b.Put([]byte("l"), block.Header.Hash)
-			if err != nil {
-				log.Panic(err)
-			}
-			bc.tip = block.Header.Hash
+		// 	err = b.Put([]byte("l"), block.Header.Hash)
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+		// 	bc.tip = block.Header.Hash
 	
-			return nil
-		})
+		// 	return nil
+		// })
 		
-		// ChangeBalance(block.Header.Coinbase, Subsidy, true)
+		// // ChangeBalance(block.Header.Coinbase, Subsidy, true)
 
-		//save transaction block map 
-		for _, trans := range transactions{
-			scbutils.Update(func(tx *bolt.Tx) error {
-				b := tx.Bucket([]byte(transactionMapBucket))
-				// buf := make([]byte, binary.MaxVarintLen64)
-				// len := binary.PutVarint(buf, block.Header.Height)
-				// buf = buf[0:len]
-				err := b.Put(trans.ID, block.Header.Hash)
-				if err != nil {
-					log.Panic(err)
-				}
-				return nil
-			})
-		}
+		// //save transaction block map 
+		// for _, trans := range transactions{
+		// 	scbutils.Update(func(tx *bolt.Tx) error {
+		// 		b := tx.Bucket([]byte(transactionMapBucket))
+		// 		// buf := make([]byte, binary.MaxVarintLen64)
+		// 		// len := binary.PutVarint(buf, block.Header.Height)
+		// 		// buf = buf[0:len]
+		// 		err := b.Put(trans.ID, block.Header.Hash)
+		// 		if err != nil {
+		// 			log.Panic(err)
+		// 		}
+		// 		return nil
+		// 	})
+		// }
 
-		for _, v := range transactions{
-			scbutils.Update(func(tx *bolt.Tx) error {
-				b := tx.Bucket([]byte(transactionBucket))
-				err := b.Delete(v.ID)
-				return err
-			})
-		}
+		// for _, v := range transactions{
+		// 	scbutils.Update(func(tx *bolt.Tx) error {
+		// 		b := tx.Bucket([]byte(transactionBucket))
+		// 		err := b.Delete(v.ID)
+		// 		return err
+		// 	})
+		// }
 
-		for _, v := range transactions{
-			if v.Coinbase{
-				ChangeBalance(v.From, v.Amount, false)
-				ChangeBalance(v.From, 0 - v.Amount, true)
-			}else{
-				ChangeBalance(v.From, 0 - v.Amount, false)
-				ChangeBalance(v.To, v.Amount, false)
-			}
-		}
+		// for _, v := range transactions{
+		// 	if v.Coinbase{
+		// 		ChangeBalance(v.From, v.Amount, false)
+		// 		ChangeBalance(v.From, 0 - v.Amount, true)
+		// 	}else{
+		// 		ChangeBalance(v.From, 0 - v.Amount, false)
+		// 		ChangeBalance(v.To, v.Amount, false)
+		// 	}
+		// }
 
 		//for test
 		// bc.AcceptNewBlock(block)

@@ -324,6 +324,23 @@ func(bc *Blockchain) GetBlockHeight() int64{
 	return lastBlock.Header.Height
 }
 
+func(bc *Blockchain) GetBlock(height int64) *Block{
+	chain := LoadBlockchain()
+	bci := chain.Iterator()
+
+	for{
+		b := bci.Next()
+		if len(b.Header.PrevBlockHash) == 0 {
+			break
+		}
+		if b.Header.Height == height{
+			return b
+		}
+	}
+	return nil
+} 
+
+
 // MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block)) *ProofOfWork {
 	var lastHash []byte
@@ -354,12 +371,12 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block){
 		if nil != block{
 			block.Sign(privateKey)
-			fmt.Println("============mine block done , reward miner ===============")
-			fmt.Printf("block.Header.Coinbase %v", block.Header.Coinbase)
-			fmt.Printf("address from wif %v", address)
-			//reward miner
-			ChangeBalance(block.Header.Coinbase, Subsidy, true)
-			fmt.Println("============reward miner ok ===============")
+			// fmt.Println("============mine block done , reward miner ===============")
+			// fmt.Printf("block.Header.Coinbase %v", block.Header.Coinbase)
+			// fmt.Printf("address from wif %v", address)
+			// //reward miner
+			// ChangeBalance(block.Header.Coinbase, Subsidy, true)
+			// fmt.Println("============reward miner ok ===============")
 			callback(block)
 		}
 	})
@@ -367,35 +384,20 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	//1. verify block POW
-	pow_res := block.VerifyPow()
-	//2. verify block hash
-	block_hash_res := bc.VerifyBlockHash(block)
-	//3. verfiy transactions
-	trans_res := false
-	for _, trans := range block.Transactions{
-		if trans.Verify(){
-			trans_res = true
-		}else{
-			trans_res = false
-			break
-		}
-	}
-	if !pow_res{
+	if pow_res := block.VerifyPow(); !pow_res{
 		log.Panic("block pow verify fail")
 	}
-	if !block_hash_res{
-		log.Panic("block hash fail")
-	}
-	if !trans_res{
+	//2. verfiy transactions
+	if trans_res := block.VerifyTransaction(); !trans_res{
 		log.Panic("block transaction verify fail")
 	}
-	//4. verify block signature
-	coinbase_res := block.VerifyCoinbase()
-	if !coinbase_res{
+
+	//3. verify block signature
+	if coinbase_res := block.VerifyCoinbase(); !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
 
-	//5. verify block merkle root hash
+	//4. verify block merkle root hash
 	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
 		log.Panic("merkle root hash verify fail")
 	}
@@ -411,68 +413,80 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 		blockchain = bc
 	}
 
-	if bc.HasBlock(block.Header.Hash){
-		fmt.Errorf("block already exists")
-		return 
-	}
-
-	blockchain.verifyNewBlock(block)
-	blockchain.CombineBlock(block)
-	
-	// reward miner
-	if block.Header.Height > 0{
-		ChangeBalance(block.Header.Coinbase, Subsidy, true)
-	}
-
-	//save transaction
-	for _, trans := range block.Transactions{
-		utils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(transactionMapBucket))
-			err := b.Put(trans.ID, block.Header.Hash)
-			if err != nil {
-				log.Panic(err)
-			}
-			return nil
-		})
-	}
-
-	//delete packed transaction
-	for _, trans := range block.Transactions{
-		utils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(transactionBucket))
-			err := b.Delete(trans.ID)
-			if err != nil {
-				// log.Panic(err)
-				fmt.Printf("an error when delete:%v", err.Error)
-			}
-			return nil
-		})
-	}
-	
-	//change balance
-	for _, v := range block.Transactions{
-		if v.Coinbase{
-			if v.From == ""{
-				// 创世交易
-				ChangeBalance(v.To, v.Amount, true)
-			}else{
-				ChangeBalance(v.From, v.Amount, false)
-				ChangeBalance(v.From, 0 - v.Amount, true)
-			}
-		}else{
-			ChangeBalance(v.From, 0 - v.Amount, false)
-			ChangeBalance(v.To, v.Amount, false)
+	//无冲突
+	if existBlock := bc.GetBlock(block.Header.Height); existBlock == nil{
+		blockchain.verifyNewBlock(block)
+		
+		//2. verify block hash
+		if block_hash_res := bc.VerifyBlockHash(block);!block_hash_res{
+			log.Panic("block hash fail")
 		}
+
+		blockchain.CombineBlock(block)
+		postAcceptBlock(block)
+
+	}else{
+		fmt.Println("block already exists, check timestamp")
+		if block.Header.Timestamp >= existBlock.Header.Timestamp{
+			fmt.Errorf("block exist and this block is later then exist one")
+		}else{
+			// test, remember delete the comment
+			blockchain.verifyNewBlock(block)
+			RevertTo(block.Header.Height - 1)
+			blockchain.CombineBlock(block)
+			postAcceptBlock(block)
+		}
+
 	}
 
-	// for _, trans := range block.Transactions{
-	// 	if trans.From != ""{
-	// 		ChangeBalance(trans.From, 0 - trans.Amount)
-	// 	}
-	// 	ChangeBalance(trans.To, trans.Amount)
-	// }
+}
 
-	// *bc = *LoadBlockchain()
+func postAcceptBlock(block *Block){
+		// reward miner
+		if block.Header.Height > 0{
+			ChangeBalance(block.Header.Coinbase, Subsidy, true)
+		}
+		
+		//save transaction
+		for _, trans := range block.Transactions{
+			utils.Update(func(tx *bolt.Tx) error {
+				b := tx.Bucket([]byte(transactionMapBucket))
+				err := b.Put(trans.ID, block.Header.Hash)
+				if err != nil {
+					log.Panic(err)
+				}
+				return nil
+			})
+		}
+
+		//delete packed transaction
+		for _, trans := range block.Transactions{
+			utils.Update(func(tx *bolt.Tx) error {
+				b := tx.Bucket([]byte(transactionBucket))
+				err := b.Delete(trans.ID)
+				if err != nil {
+					// log.Panic(err)
+					fmt.Printf("an error when delete:%v", err.Error)
+				}
+				return nil
+			})
+		}
+		
+		//change balance
+		for _, v := range block.Transactions{
+			if v.Coinbase{
+				if v.From == ""{
+					// 创世交易
+					ChangeBalance(v.To, v.Amount, true)
+				}else{
+					ChangeBalance(v.From, v.Amount, false)
+					ChangeBalance(v.From, 0 - v.Amount, true)
+				}
+			}else{
+				ChangeBalance(v.From, 0 - v.Amount, false)
+				ChangeBalance(v.To, v.Amount, false)
+			}
+		}
 }
 
 func (bc *Blockchain) CombineBlock(block *Block){
@@ -529,17 +543,17 @@ func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
 	return false
 }
 
-func (bc *Blockchain) HasBlock(hash []byte) bool {
-	var exists bool = false
+func (bc *Blockchain) HasBlock(hash []byte) *Block {
+	var block *Block
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blocksBucket))
 		blockbytes := b.Get(hash)
 		if nil != blockbytes{
-			exists = true
+			block = DeserializeBlock(blockbytes)
 		}
 		return nil
 	})
-	return exists
+	return block
 }
 
 // revert block chain to specific height
@@ -557,9 +571,49 @@ func RevertTo(Height int64){
 				bucket := tx.Bucket([]byte(blocksBucket))
 				bucket.Delete(b.Header.Hash)
 				return nil
-			})	
-		}
-		if b.Header.Height == Height{
+			})
+			// remove reward miner
+			ChangeBalance(b.Header.Coinbase, 0 - Subsidy, true)
+			//delete saved transaction
+			for _, trans := range b.Transactions{
+				utils.Update(func(tx *bolt.Tx) error {
+					bucket := tx.Bucket([]byte(transactionMapBucket))
+					err := bucket.Delete(trans.ID)
+					if err != nil {
+						log.Panic(err)
+					}
+					return nil
+				})
+			}
+
+			//recovery deleted packed transaction
+			for _, trans := range b.Transactions{
+				utils.Update(func(tx *bolt.Tx) error {
+					bucket := tx.Bucket([]byte(transactionBucket))
+					err := bucket.Put(trans.ID, b.Header.Hash)
+					if err != nil {
+						// log.Panic(err)
+						fmt.Printf("an error when delete:%v", err.Error)
+					}
+					return nil
+				})
+			}
+			//recovery changed balance
+			for _, v := range b.Transactions{
+				if v.Coinbase{
+					if v.From == ""{
+						// 创世交易
+						// ChangeBalance(v.To, v.Amount, true)
+					}else{
+						ChangeBalance(v.From, 0 - v.Amount, false)
+						ChangeBalance(v.From, v.Amount, true)
+					}
+				}else{
+					ChangeBalance(v.From, v.Amount, false)
+					ChangeBalance(v.To, 0 - v.Amount, false)
+				}
+			}
+		}else if b.Header.Height == Height{
 			utils.Update(func(tx *bolt.Tx) error {
 				bucket := tx.Bucket([]byte(blocksBucket))
 				bucket.Delete([]byte("l"))
