@@ -5,6 +5,8 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
+	"encoding/gob"
+	// "math"
 )
 
 type Content interface {
@@ -27,6 +29,41 @@ type Node struct {
 	Hash   []byte
 	C      Content
 }
+
+type NodeShadow struct{
+	Leaf bool
+	Dup bool
+	Hash [] byte
+	C Content
+}
+
+
+func (n *NodeShadow) Serialize() []byte {
+	gob.Register(&BlockContent{})
+	var result bytes.Buffer
+	encoder := gob.NewEncoder(&result)
+
+	err := encoder.Encode(n)
+	if err != nil {
+		blockLogger.Error("Failed to serialize the node: %v", err)
+		panic(err)
+	}
+	resbytes  := result.Bytes()
+	return resbytes
+}
+func DeserializeNode(d []byte) *NodeShadow {
+	var node NodeShadow
+
+	decoder := gob.NewDecoder(bytes.NewReader(d))
+	err := decoder.Decode(&node)
+	if err != nil {
+		blockLogger.Error("Failed to deserialize the node: %v", err)
+		return nil
+	}
+
+	return &node
+}
+
 
 func (n *Node) verifyNode() ([]byte, error) {
 	if n.leaf {
@@ -109,7 +146,6 @@ func buildWithContent(cs []Content) (*Node, []*Node, error) {
 
 	return root, leafs, nil
 }
-
 
 func buildIntermediate(nl []*Node) (*Node, error) {
 	var nodes []*Node
@@ -287,38 +323,106 @@ func(m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
 
 	return paths, nil
 }
-// func (m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
-// 	var paths [][] byte
 
-// 	var node *Node
-
-// 	for _, l := range m.Leafs {
-// 		ok, err := l.C.Equals(content)
-// 		if err != nil {
-// 			return nil , err
-// 		}
-// 		if ok{
-// 			// if l.Parent.Left.C.Equals(content)
-// 			node = l
-// 			break
-// 		}
-// 	}
+// func (m *MerkleTree) Serialize() []byte {
 	
-// 	var cont Content = content
-
-// 	for true{
-// 		ok, err := node.C.Equals(cont)
-// 		if err != nil {
-// 			return nil , err
-// 		}
-// 		if ok{
-// 			if node.Parent == nil{
-// 				break
-// 			}
-// 			if
-// 		}
-
-// 	}
-
-// 	return paths, nil
 // }
+// func SerializeAll(n *Node) [][]byte{
+// 	var collects [][]byte
+// 	collects = pre(n, collects)
+// 	return collects
+// }
+// func pre(node *Node, collects [][]byte) [][]byte {
+// 	if(node == nil){
+// 		collects = append(collects, []byte(""))
+// 		return collects
+// 	}else{
+// 		ns := & NodeShadow{
+// 			Leaf: node.leaf,
+// 			Dup: node.dup,
+// 			Hash: node.Hash,
+// 			C: node.C,
+// 		}
+// 		collects = append(collects, ns.Serialize())
+// 		collects = pre(node.Left,  collects);
+// 		collects = pre(node.Right, collects);
+// 	}
+// 	return collects
+// }
+
+func BreadthFirstSerialize(node Node) [][]byte {
+	var result [][]byte
+	var nodes []Node = []Node{node}
+
+	for len(nodes) > 0 {
+		node := nodes[0]
+		nodes = nodes[1:]
+
+		ns := & NodeShadow{
+			Leaf: node.leaf,
+			Dup: node.dup,
+			Hash: node.Hash,
+			C: node.C,
+		}
+
+		result = append(result, ns.Serialize())
+		if (node.Left != nil) {
+			nodes = append(nodes, *node.Left)
+		}
+		if (node.Right != nil) {
+			nodes = append(nodes, *node.Right)
+		}
+	}
+	return result
+}
+
+func DeserializeNodeFromData(data [][]byte) *Node {
+    if len(data) == 0 {
+        return nil
+    }
+    root := newNodeFromData(data[0])
+
+    queue := make([]*Node, 1)
+    queue[0] = root
+
+	data = data[1:]
+
+	var node *Node
+	var parent *Node
+
+    for len(data) > 0 && len(queue) > 0 {
+		parent = node
+        node = queue[0]
+        queue = queue[1:]
+
+		// 父节点
+		node.Parent = parent
+
+        // 左侧节点
+        node.Left = newNodeFromData(data[0])
+        if node.Left != nil {
+            queue = append(queue, node.Left)
+        }
+        data = data[1:]
+
+        // 右侧节点
+        if len(data) > 0 {
+            node.Right = newNodeFromData(data[0])
+            if node.Right != nil {
+                queue = append(queue, node.Right)
+            }
+            data = data[1:]
+        }
+    }
+    return root
+}
+func newNodeFromData(data [] byte) *Node {
+		ns := DeserializeNode(data)
+		node := &Node{
+			leaf: ns.Leaf,
+			dup: ns.Dup,
+			Hash: ns.Hash,
+			C: ns.C,
+		}
+		return node
+}

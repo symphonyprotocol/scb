@@ -13,7 +13,13 @@ type Account struct{
 	Balance int64
 	Nonce  int64
 }
-  
+
+type AccountHistory struct{
+	Timestamp int64
+	Address string
+	ExchangeAmount int64
+}
+
 // Serializes the block
 func (a *Account) Serialize() []byte {
 	var result bytes.Buffer
@@ -69,9 +75,6 @@ func ChangeBalance(address string, balance int64, isGas bool){
 			return nil
 		})
 }
-
-
-
 
 func GetBalance(address string, isGas bool) int64{
 	var balance int64 = 0
@@ -132,3 +135,20 @@ func NewAccount(address string, balance, nonce int64) *Account{
 	}
 	return &account
 }
+
+func GetAllAccount() [][]byte {
+	var accounts [][]byte
+
+	utils.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte("accountBucket"))
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// fmt.Printf("key=%s, value=%s\n", k, v)
+			account := DeserializeAccount(v)
+			accounts = append(accounts, account.Serialize())
+		}
+		return nil
+	})
+	return accounts
+}
+
