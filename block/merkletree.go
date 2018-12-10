@@ -39,7 +39,8 @@ type NodeShadow struct{
 
 
 func (n *NodeShadow) Serialize() []byte {
-	gob.Register(&BlockContent{})
+	// gob.Register(&BlockContent{})
+	gob.Register(&TestContent{})
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
 
@@ -376,7 +377,9 @@ func BreadthFirstSerialize(node Node) [][]byte {
 	return result
 }
 
-func DeserializeNodeFromData(data [][]byte) *Node {
+func DeserializeNodeFromData(data [][]byte) *MerkleTree {
+	var tree *MerkleTree
+
     if len(data) == 0 {
         return nil
     }
@@ -389,6 +392,7 @@ func DeserializeNodeFromData(data [][]byte) *Node {
 
 	var node *Node
 	var parent *Node
+	var leafs [] *Node
 
     for len(data) > 0 && len(queue) > 0 {
 		parent = node
@@ -398,24 +402,43 @@ func DeserializeNodeFromData(data [][]byte) *Node {
 		// 父节点
 		node.Parent = parent
 
-        // 左侧节点
-        node.Left = newNodeFromData(data[0])
+		// 左侧节点
+		left := newNodeFromData(data[0])
+		if left.leaf{
+			leafs = append(leafs,left)
+		}
+		node.Left = left
+		
         if node.Left != nil {
-            queue = append(queue, node.Left)
+            queue = append(queue, node.Left) 
         }
         data = data[1:]
 
         // 右侧节点
         if len(data) > 0 {
-            node.Right = newNodeFromData(data[0])
+			right := newNodeFromData(data[0])
+			if right.leaf{
+				leafs = append(leafs,right)
+			}
+            node.Right = right
             if node.Right != nil {
                 queue = append(queue, node.Right)
             }
             data = data[1:]
         }
-    }
-    return root
+	}
+	
+	tree = &MerkleTree{
+		Root : root,
+		merkleRoot: root.Hash,
+		Leafs: leafs,
+	}
+
+    return tree
 }
+
+
+
 func newNodeFromData(data [] byte) *Node {
 		ns := DeserializeNode(data)
 		node := &Node{
