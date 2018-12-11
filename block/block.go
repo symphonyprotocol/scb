@@ -19,13 +19,16 @@ var blockLogger = log.GetLogger("scb")
 
 type BlockHeader struct{
 	Timestamp      int64
+	Difficulty     int64
 	PrevBlockHash  []byte
 	Hash           []byte
 	Nonce          int64
 	Height		   int64
 	Coinbase       string
 	MerkleRootHash []byte
-	Signature 	   []byte	  
+	MerkleRootAccountHash []byte
+	// MerkleRootAccountGasHash []byte
+  	Signature 	   []byte
 }
 
 type Block struct {
@@ -78,6 +81,19 @@ func (b *Block) HashTransactions() []byte {
 	}
 
 	mTree, err := NewTree(transactions)
+	if err == nil{
+		return mTree.MerkleRoot()
+	}
+	return nil
+}
+
+func(b *Block) HashAccount() []byte{
+	var contents [] Content
+	accounts := GetAllAccount()
+	for _, ac := range accounts {
+		contents = append(contents, BlockContent{X : ac.Serialize()})
+	}
+	mTree, err := NewTree(contents)
 	if err == nil{
 		return mTree.MerkleRoot()
 	}

@@ -17,7 +17,6 @@ import (
 const blocksBucket = "blocks"
 const accountBucket = "account"
 const transactionBucket = "transaction_pool"
-const gasBucket = "gas"
 const transactionMapBucket = "transaction"
 // 挖矿奖励金
 const Subsidy = 100
@@ -138,11 +137,6 @@ func CreateEmptyBlockchain() *Blockchain {
 		if err2 != nil {
 			log.Panic(err)
 		}
-		_, err2 = tx.CreateBucket([]byte(gasBucket))
-
-		if err2 != nil {
-			log.Panic(err)
-		}
 
 		return nil
 	})
@@ -218,15 +212,10 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 			if err2 != nil {
 				log.Panic(err)
 			}
-
-			_, err2 = tx.CreateBucket([]byte(gasBucket))
-			if err2 != nil {
-				log.Panic(err)
-			}
 	
 			return nil
 		})
-		ChangeBalance(genesis.Header.Coinbase, Subsidy, true)
+		ChangeBalance(genesis.Header.Coinbase, 0 , Subsidy)
 		bc := Blockchain{tip}
 		if callback != nil {
 			callback(&bc)
@@ -436,15 +425,13 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 			blockchain.CombineBlock(block)
 			postAcceptBlock(block)
 		}
-
 	}
-
 }
 
 func postAcceptBlock(block *Block){
 		// reward miner
 		if block.Header.Height > 0{
-			ChangeBalance(block.Header.Coinbase, Subsidy, true)
+			ChangeBalance(block.Header.Coinbase, 0, Subsidy)
 		}
 		
 		//save transaction
@@ -477,14 +464,14 @@ func postAcceptBlock(block *Block){
 			if v.Coinbase{
 				if v.From == ""{
 					// 创世交易
-					ChangeBalance(v.To, v.Amount, true)
+					ChangeBalance(v.To, 0, v.Amount)
 				}else{
-					ChangeBalance(v.From, v.Amount, false)
-					ChangeBalance(v.From, 0 - v.Amount, true)
+					// ChangeBalance(v.From, v.Amount, 0)
+					ChangeBalance(v.From, v.Amount, 0 - v.Amount)
 				}
 			}else{
-				ChangeBalance(v.From, 0 - v.Amount, false)
-				ChangeBalance(v.To, v.Amount, false)
+				ChangeBalance(v.From, 0 - v.Amount, 0)
+				ChangeBalance(v.To, v.Amount, 0)
 			}
 		}
 }
@@ -573,7 +560,7 @@ func RevertTo(Height int64){
 				return nil
 			})
 			// remove reward miner
-			ChangeBalance(b.Header.Coinbase, 0 - Subsidy, true)
+			ChangeBalance(b.Header.Coinbase, 0 , 0 - Subsidy)
 			//delete saved transaction
 			for _, trans := range b.Transactions{
 				utils.Update(func(tx *bolt.Tx) error {
@@ -605,12 +592,12 @@ func RevertTo(Height int64){
 						// 创世交易
 						// ChangeBalance(v.To, v.Amount, true)
 					}else{
-						ChangeBalance(v.From, 0 - v.Amount, false)
-						ChangeBalance(v.From, v.Amount, true)
+						ChangeBalance(v.From, 0 - v.Amount, 0)
+						ChangeBalance(v.From, 0, v.Amount)
 					}
 				}else{
-					ChangeBalance(v.From, v.Amount, false)
-					ChangeBalance(v.To, 0 - v.Amount, false)
+					ChangeBalance(v.From, v.Amount, 0)
+					ChangeBalance(v.To, 0 - v.Amount, 0)
 				}
 			}
 		}else if b.Header.Height == Height{

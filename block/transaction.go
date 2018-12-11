@@ -126,7 +126,7 @@ func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transacti
 		log.Panic("ERROR: Recipient address is not valid")
 	}
 
-	account := GetAccount(from, coinbase)
+	account := GetAccount(from)
 
 	if account.Balance < amount && !coinbase{
 		log.Panic("ERROR: No enougn amount")
