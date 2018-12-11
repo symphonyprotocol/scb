@@ -624,8 +624,9 @@ func PrintChain() {
 		fmt.Printf("Height:%d\n", b.Header.Height)
 		fmt.Printf("Coinbase:%v\n", b.Header.Coinbase)
 		fmt.Printf("merkle Root:%v\n", b.Header.MerkleRootHash)
+		fmt.Printf("account state Root:%v\n", b.Header.MerkleRootAccountHash)
 		pow := NewProofOfWork(b)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate()))
+		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate(false)))
 		fmt.Printf("Signature Verify:%v \n", b.VerifyCoinbase())
 		fmt.Println()
 

@@ -5,7 +5,7 @@ import "log"
 import "github.com/boltdb/bolt"
 import "fmt"
 import "github.com/symphonyprotocol/scb/utils"
-import "sort"
+// import "sort"  
 
 // const accountBucket = "account"
 
@@ -137,6 +137,9 @@ func GetAllAccount() []*Account {
 
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(accountBucket))
+		if b == nil{
+			return nil
+		}
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
 			// fmt.Printf("key=%s, value=%s\n", k, v)
@@ -145,9 +148,17 @@ func GetAllAccount() []*Account {
 		}
 		return nil
 	})
-	sort.Slice(accounts,func(i, j int) bool{
-		return accounts[i].Address < accounts[j].Address
-	})
+	// sort.Slice(accounts,func(i, j int) bool{
+	// 	return accounts[i].Address < accounts[j].Address
+	// })
 	return accounts
 }
 
+func FindAccount(accounts []*Account , address string) *Account{
+	for _, account := range accounts{
+		if account.Address == address{
+			return account
+		}
+	}
+	return nil
+}

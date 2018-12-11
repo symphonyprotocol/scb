@@ -11,6 +11,7 @@ import "github.com/symphonyprotocol/scb/utils"
 import sutils "github.com/symphonyprotocol/sutil/utils"
 import "github.com/symphonyprotocol/log"
 import "github.com/symphonyprotocol/sutil/elliptic"
+import "sort"
 
 const targetBits = 8
 
@@ -75,7 +76,6 @@ func DeserializeBlock(d []byte) *Block {
 func (b *Block) HashTransactions() []byte {
 	// var transactions [][]byte
 	var transactions []Content
-
 	for _, tx := range b.Transactions {
 		transactions = append(transactions, BlockContent{X : tx.Serialize()})
 	}
@@ -87,9 +87,17 @@ func (b *Block) HashTransactions() []byte {
 	return nil
 }
 
-func(b *Block) HashAccount() []byte{
+func(b *Block) HashAccount(preprocess bool) []byte{
 	var contents [] Content
 	accounts := GetAllAccount()
+	if preprocess{
+		accounts = b.PreProcessAccountBalance(accounts)
+	}
+
+	sort.Slice(accounts,func(i, j int) bool{
+		return accounts[i].Address < accounts[j].Address
+	})
+
 	for _, ac := range accounts {
 		contents = append(contents, BlockContent{X : ac.Serialize()})
 	}
@@ -134,7 +142,7 @@ func (pow *ProofOfWork) Run(callback func(int64, []byte))  {
 			case <- pow.quitSign:
 				break QUIT
 			default:
-				data := pow.prepareData(nonce)
+				data := pow.prepareData(nonce, true)
 		
 				hash = sha256.Sum256(data)
 				fmt.Printf("%d->%x\n", nonce, hash)
@@ -176,7 +184,9 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, c
 		Transactions: transactions,
 	}
 	blockRootHash := block.HashTransactions()
+	stateRootHash := block.HashAccount(true)
 	block.Header.MerkleRootHash = blockRootHash
+	block.Header.MerkleRootAccountHash = stateRootHash
 
 	pow := NewProofOfWork(block)
 	pow.Run(func (nonce int64, hash []byte) {
@@ -190,11 +200,12 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, c
 }
 
 
-func (pow *ProofOfWork) prepareData(nonce int64) []byte {
+func (pow *ProofOfWork) prepareData(nonce int64, preprocess bool) []byte {
 	data := bytes.Join(
 		[][]byte{
 			pow.block.Header.PrevBlockHash,
 			pow.block.HashTransactions(),
+			pow.block.HashAccount(preprocess),
 			utils.IntToHex(pow.block.Header.Timestamp),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(nonce),
@@ -207,10 +218,10 @@ func (pow *ProofOfWork) prepareData(nonce int64) []byte {
 
 
 // Validate validates block's PoW
-func (pow *ProofOfWork) Validate() bool {
+func (pow *ProofOfWork) Validate(preprocess bool) bool {
 	var hashInt big.Int
 
-	data := pow.prepareData(pow.block.Header.Nonce)
+	data := pow.prepareData(pow.block.Header.Nonce, preprocess)
 	hash := sha256.Sum256(data)
 	hashInt.SetBytes(hash[:])
 
@@ -219,11 +230,12 @@ func (pow *ProofOfWork) Validate() bool {
 	return isValid
 }
 
-func (block *Block) prepareData() []byte{
+func (block *Block) prepareData(preprocess bool) []byte{
 	data := bytes.Join(
 		[][]byte{
 			block.Header.PrevBlockHash,
 			block.HashTransactions(),
+			block.HashAccount(preprocess),
 			utils.IntToHex(block.Header.Timestamp),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(block.Header.Nonce),
@@ -238,7 +250,7 @@ func (block *Block) VerifyPow() bool{
 	target := big.NewInt(1)
 	target.Lsh(target, uint(256-targetBits))
 
-	data := block.prepareData()
+	data := block.prepareData(false)
 	hash := sha256.Sum256(data)
 	hashInt.SetBytes(hash[:])
 	return hashInt.Cmp(target) == -1
@@ -258,7 +270,7 @@ func(block *Block) VerifyMerkleHash() bool{
 }
 
 func (block *Block) VerifyHash() bool{
-	data := block.prepareData()
+	data := block.prepareData(false)
 	hash := sha256.Sum256(data)
 
 	return bytes.Compare(hash[:], block.Header.Hash) == 0
@@ -291,4 +303,55 @@ func (block *Block) VerifyCoinbase() bool{
 		}
 	}
 	return res
+ }
+
+ func (block *Block) PreProcessAccountBalance(accounts [] *Account) [] *Account{
+	for _, v := range block.Transactions{
+		account_from := FindAccount(accounts, v.From)
+		account_to := FindAccount(accounts, v.To)
+
+		if v.Coinbase{
+			if v.From == ""{
+				// 创世交易
+				if account_to == nil{
+					account_to = InitAccount(v.To)
+					account_to.GasBalance += v.Amount
+					account_to.Nonce += 1
+					accounts = append(accounts, account_to)
+				}
+			}else{
+				if account_from == nil{
+					account_from = InitAccount(v.From)
+					accounts = append(accounts, account_from)
+				}
+				account_from.GasBalance -= v.Amount
+				account_from.Balance += v.Amount
+				account_from.Nonce += 1
+
+				if account_from.GasBalance < 0{
+					fmt.Errorf("account:%v, no enough amount", v.From)
+				}
+			}
+
+		}else{
+			if account_from == nil{
+				account_from = InitAccount(v.From)
+				accounts = append(accounts, account_from)
+			}
+			if account_to == nil{
+				account_to = InitAccount(v.To)
+				accounts = append(accounts, account_to)
+			}
+
+			account_from.Balance -= v.Amount
+			account_to.Balance += v.Amount
+
+			if account_from.Balance < 0{
+				fmt.Errorf("account:%v, no enough amount", v.From)
+			}
+			account_from.Nonce += 1
+			account_to.Nonce += 1
+		}
+	}
+	return accounts
  }
