@@ -217,18 +217,18 @@ func (pow *ProofOfWork) prepareData(nonce int64, preprocess bool) []byte {
 }
 
 
-// Validate validates block's PoW
-func (pow *ProofOfWork) Validate(preprocess bool) bool {
-	var hashInt big.Int
+// // Validate validates block's PoW
+// func (pow *ProofOfWork) Validate(preprocess bool) bool {
+// 	var hashInt big.Int
 
-	data := pow.prepareData(pow.block.Header.Nonce, preprocess)
-	hash := sha256.Sum256(data)
-	hashInt.SetBytes(hash[:])
+// 	data := pow.prepareData(pow.block.Header.Nonce, preprocess)
+// 	hash := sha256.Sum256(data)
+// 	hashInt.SetBytes(hash[:])
 
-	isValid := hashInt.Cmp(pow.target) == -1
+// 	isValid := hashInt.Cmp(pow.target) == -1
 
-	return isValid
-}
+// 	return isValid
+// }
 
 func (block *Block) prepareData(preprocess bool) []byte{
 	data := bytes.Join(
@@ -245,12 +245,12 @@ func (block *Block) prepareData(preprocess bool) []byte{
 	return data
 }
 
-func (block *Block) VerifyPow() bool{
+func (block *Block) VerifyPow(preprocess bool) bool{
 	var hashInt big.Int
 	target := big.NewInt(1)
 	target.Lsh(target, uint(256-targetBits))
 
-	data := block.prepareData(false)
+	data := block.prepareData(preprocess)
 	hash := sha256.Sum256(data)
 	hashInt.SetBytes(hash[:])
 	return hashInt.Cmp(target) == -1
@@ -270,7 +270,7 @@ func(block *Block) VerifyMerkleHash() bool{
 }
 
 func (block *Block) VerifyHash() bool{
-	data := block.prepareData(false)
+	data := block.prepareData(true)
 	hash := sha256.Sum256(data)
 
 	return bytes.Compare(hash[:], block.Header.Hash) == 0

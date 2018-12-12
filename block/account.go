@@ -49,12 +49,12 @@ func ChangeBalance(address string, balance int64, gas int64){
 			if accountbytes == nil{
 				newbalance = balance
 				newgas = gas
-				newnonce = 0
+				// newnonce = 0
 			}else{
 				account := DeserializeAccount(accountbytes)
 				newbalance = account.Balance + balance
 				newgas = account.GasBalance + gas
-				newnonce =  account.Nonce + 1
+				newnonce =  account.Nonce
 			}
 	
 			if newbalance < 0 {
@@ -63,7 +63,6 @@ func ChangeBalance(address string, balance int64, gas int64){
 			if newgas < 0{
 				return fmt.Errorf("no enount gas")
 			}
-
 	
 			newaccount = NewAccount(address, newbalance, newnonce, newgas)
 	
@@ -77,10 +76,25 @@ func ChangeBalance(address string, balance int64, gas int64){
 		})
 }
 
+func NoncePlus(address string){
+	utils.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(accountBucket))
+		accountbytes := bucket.Get([]byte(address))
+		if accountbytes != nil{
+			account := DeserializeAccount(accountbytes)
+			account.Nonce += 1
+			bucket.Delete([]byte(address))
+			bucket.Put([]byte(address), account.Serialize())
+		}
+		return nil
+	})
+}
+
 func GetBalance(address string) (int64,int64){
 	// var balance int64 = 0
 	account := GetAccount(address)
 	if account != nil{
+		fmt.Printf("nonce is :%v\n",  account.Nonce)
 		return account.Balance, account.GasBalance
 	}
 	return -1, -1

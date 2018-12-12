@@ -158,68 +158,70 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	fmt.Printf("address from wif %v\n", address)
 	account := InitAccount(address)
 
-	var tip []byte
+	// var tip []byte
 
 	trans := NewTransaction(account.Nonce, Subsidy, "", address, true)
 	trans.Sign(privateKey)
 
+	bc := CreateEmptyBlockchain()
+
 	NewGenesisBlock(trans, address, func (genesis *Block) {
 		genesis.Sign(privateKey)
-
-		utils.Update(func(tx *bolt.Tx) error {
-			b, err := tx.CreateBucket([]byte(accountBucket))
-			if err != nil {
-				log.Panic(err)
-			}
-	
-			err = b.Put([]byte(address), account.Serialize())
-			if err != nil {
-				log.Panic(err)
-			}
-	
-			b, err = tx.CreateBucket([]byte(blocksBucket))
-			if err != nil {
-				log.Panic(err)
-			}
-	
-			err = b.Put(genesis.Header.Hash, genesis.Serialize())
-			if err != nil {
-				log.Panic(err)
-			}
-	
-			err = b.Put([]byte("l"), genesis.Header.Hash)
-			if err != nil {
-				log.Panic(err)
-			}
-			tip = genesis.Header.Hash
-
-
-			b, err = tx.CreateBucket([]byte(transactionMapBucket))
-			if err != nil {
-				log.Panic(err)
-			}
-			
-			//save transaction block map 
-			// buf := make([]byte, binary.MaxVarintLen64)
-			// len := binary.PutVarint(buf, genesis.Header.Height)
-			// buf = buf[0:len]
-			err = b.Put(trans.ID, genesis.Header.Hash)
-			if err != nil {
-				log.Panic(err)
-			}
-
-			_, err2 := tx.CreateBucket([]byte(transactionBucket))
-			if err2 != nil {
-				log.Panic(err)
-			}
-	
-			return nil
-		})
-		ChangeBalance(genesis.Header.Coinbase, 0 , Subsidy)
-		bc := Blockchain{tip}
+		bc.AcceptNewBlock(genesis)
 		if callback != nil {
-			callback(&bc)
+			callback(bc)
 		}
+		// utils.Update(func(tx *bolt.Tx) error {
+		// 	b, err := tx.CreateBucket([]byte(accountBucket))
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+	
+		// 	err = b.Put([]byte(address), account.Serialize())
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+	
+		// 	b, err = tx.CreateBucket([]byte(blocksBucket))
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+	
+		// 	err = b.Put(genesis.Header.Hash, genesis.Serialize())
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+	
+		// 	err = b.Put([]byte("l"), genesis.Header.Hash)
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+		// 	tip = genesis.Header.Hash
+
+
+		// 	b, err = tx.CreateBucket([]byte(transactionMapBucket))
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+			
+		// 	//save transaction block map 
+		// 	// buf := make([]byte, binary.MaxVarintLen64)
+		// 	// len := binary.PutVarint(buf, genesis.Header.Height)
+		// 	// buf = buf[0:len]
+		// 	err = b.Put(trans.ID, genesis.Header.Hash)
+		// 	if err != nil {
+		// 		log.Panic(err)
+		// 	}
+
+		// 	_, err2 := tx.CreateBucket([]byte(transactionBucket))
+		// 	if err2 != nil {
+		// 		log.Panic(err)
+		// 	}
+	
+		// 	return nil
+		// })
+		// ChangeBalance(genesis.Header.Coinbase, 0 , Subsidy)
+		// bc := Blockchain{tip}
 	})
 }
 
@@ -319,6 +321,9 @@ func(bc *Blockchain) GetBlock(height int64) *Block{
 
 	for{
 		b := bci.Next()
+		if b == nil{
+			return nil
+		}
 		if len(b.Header.PrevBlockHash) == 0 {
 			break
 		}
@@ -373,7 +378,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	//1. verify block POW
-	if pow_res := block.VerifyPow(); !pow_res{
+	if pow_res := block.VerifyPow(true); !pow_res{
 		log.Panic("block pow verify fail")
 	}
 	//2. verfiy transactions
@@ -461,6 +466,7 @@ func postAcceptBlock(block *Block){
 		
 		//change balance
 		for _, v := range block.Transactions{
+			
 			if v.Coinbase{
 				if v.From == ""{
 					// 创世交易
@@ -469,9 +475,11 @@ func postAcceptBlock(block *Block){
 					// ChangeBalance(v.From, v.Amount, 0)
 					ChangeBalance(v.From, v.Amount, 0 - v.Amount)
 				}
+				NoncePlus(v.To)
 			}else{
 				ChangeBalance(v.From, 0 - v.Amount, 0)
 				ChangeBalance(v.To, v.Amount, 0)
+				NoncePlus(v.From)
 			}
 		}
 }
@@ -625,8 +633,8 @@ func PrintChain() {
 		fmt.Printf("Coinbase:%v\n", b.Header.Coinbase)
 		fmt.Printf("merkle Root:%v\n", b.Header.MerkleRootHash)
 		fmt.Printf("account state Root:%v\n", b.Header.MerkleRootAccountHash)
-		pow := NewProofOfWork(b)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(pow.Validate(false)))
+		// pow := NewProofOfWork(b)
+		fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPow(false)))
 		fmt.Printf("Signature Verify:%v \n", b.VerifyCoinbase())
 		fmt.Println()
 

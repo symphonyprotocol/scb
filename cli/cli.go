@@ -89,7 +89,7 @@ func (cli *CLI) Run() {
 		cli.GetBalance(*getBalanceAddress)
 	}
 	if printChainCmd.Parsed() {
-		cli.printChain()
+		cli.PrintChain()
 	}
 	if mineCmd.Parsed(){
 		if *mineAddress == ""{

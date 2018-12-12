@@ -4,6 +4,6 @@ import (
 	"github.com/symphonyprotocol/scb/block"
 )
 
-func (cli *CLI) printChain() {
+func (cli *CLI) PrintChain() {
 	block.PrintChain()
 }
