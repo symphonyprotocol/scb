@@ -315,7 +315,7 @@ func (block *Block) VerifyCoinbase() bool{
 				// 创世交易
 				if account_to == nil{
 					account_to = InitAccount(v.To)
-					account_to.GasBalance += v.Amount
+					// account_to.GasBalance += v.Amount
 					account_to.Nonce += 1
 					accounts = append(accounts, account_to)
 				}
@@ -353,5 +353,9 @@ func (block *Block) VerifyCoinbase() bool{
 			account_to.Nonce += 1
 		}
 	}
+	reward_addr := block.Header.Coinbase
+	coinbase := FindAccount(accounts, reward_addr)
+	coinbase.GasBalance += Subsidy
+	
 	return accounts
  }
