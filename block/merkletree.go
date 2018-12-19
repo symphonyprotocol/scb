@@ -6,12 +6,14 @@ import (
 	"errors"
 	"fmt"
 	"encoding/gob"
-	// "math"
+	"math"
+	"log"
 )
 
 type Content interface {
 	CalculateHash() ([]byte, error)
 	Equals(other Content) (bool, error)
+	IsDup()(bool, error)
 }
 
 type MerkleTree struct {
@@ -26,6 +28,7 @@ type Node struct {
 	Right  *Node
 	leaf   bool
 	dup    bool
+	virtual bool
 	Hash   []byte
 	C      Content
 }
@@ -52,6 +55,7 @@ func (n *NodeShadow) Serialize() []byte {
 	resbytes  := result.Bytes()
 	return resbytes
 }
+
 func DeserializeNode(d []byte) *NodeShadow {
 	var node NodeShadow
 
@@ -64,7 +68,6 @@ func DeserializeNode(d []byte) *NodeShadow {
 
 	return &node
 }
-
 
 func (n *Node) verifyNode() ([]byte, error) {
 	if n.leaf {
@@ -121,14 +124,20 @@ func buildWithContent(cs []Content) (*Node, []*Node, error) {
 	var leafs []*Node
 	for _, c := range cs {
 		hash, err := c.CalculateHash()
+		dup, err2 := c.IsDup()
+
 		if err != nil {
 			return nil, nil, err
+		}
+		if err2 != nil {
+			return nil, nil, err2
 		}
 
 		leafs = append(leafs, &Node{
 			Hash: hash,
 			C:    c,
 			leaf: true,
+			virtual: dup,
 		})
 	}
 	if len(leafs)%2 == 1 {
@@ -205,7 +214,6 @@ func (m *MerkleTree) RebuildTreeWith(cs []Content) error {
 	return nil
 }
 
-
 func (m *MerkleTree) VerifyTree() (bool, error) {
 	calculatedMerkleRoot, err := m.Root.verifyNode()
 	if err != nil {
@@ -215,6 +223,7 @@ func (m *MerkleTree) VerifyTree() (bool, error) {
 	if bytes.Compare(m.merkleRoot, calculatedMerkleRoot) == 0 {
 		return true, nil
 	}
+
 	return false, nil
 }
 
@@ -276,6 +285,7 @@ func GetNodeBrother(node *Node) *Node{
 	if par_node == nil{
 		return nil
 	}
+
 	// ok, err := par_node.Left.C.Equals(node.C)
 	// if ok && err == nil{
 	// 	return par_node.Right
@@ -284,6 +294,7 @@ func GetNodeBrother(node *Node) *Node{
 	// if ok_r && err_r == nil{
 	// 	return par_node.Left
 	// }
+
 	if bytes.Compare(par_node.Left.Hash, node.Hash) == 0{
 		return par_node.Right
 	}else if bytes.Compare(par_node.Right.Hash, node.Hash) == 0{
@@ -325,31 +336,115 @@ func(m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
 	return paths, nil
 }
 
-// func (m *MerkleTree) Serialize() []byte {
+func(m *MerkleTree) GetNodePath(node *Node) ([][]byte, error){
+	var paths [][] byte
+
+	for true{
+		if node.Parent == nil{
+			break
+		}
+		brother := GetNodeBrother(node)
+		if brother != nil{
+			paths = append(paths, brother.Hash)
+			node = node.Parent
+		}else{
+			break
+		}
+	}
+
+	return paths, nil
+}
+
+func(left *MerkleTree) MergeTree(right *MerkleTree)(*MerkleTree, error){
+	h := sha256.New()
+	chash := append(left.Root.Hash, right.Root.Hash...)
+
+	if _, err := h.Write(chash); err != nil {
+		return nil, err
+	}
+
+	leafs := append(left.Leafs, right.Leafs...)
 	
-// }
-// func SerializeAll(n *Node) [][]byte{
-// 	var collects [][]byte
-// 	collects = pre(n, collects)
-// 	return collects
-// }
-// func pre(node *Node, collects [][]byte) [][]byte {
-// 	if(node == nil){
-// 		collects = append(collects, []byte(""))
-// 		return collects
-// 	}else{
-// 		ns := & NodeShadow{
-// 			Leaf: node.leaf,
-// 			Dup: node.dup,
-// 			Hash: node.Hash,
-// 			C: node.C,
-// 		}
-// 		collects = append(collects, ns.Serialize())
-// 		collects = pre(node.Left,  collects);
-// 		collects = pre(node.Right, collects);
-// 	}
-// 	return collects
-// }
+	n := &Node{
+		Left: left.Root,
+		Right: right.Root,
+		Hash:  h.Sum(nil),
+	}
+	t := &MerkleTree{
+		Root:       n,
+		merkleRoot: n.Hash,
+		Leafs:      leafs,
+	}
+	return t, nil
+}
+
+func(m *MerkleTree) Depth() int64{
+	var depth int64 = 0
+	node := m.Root
+	for{
+		if node != nil{
+			node = node.Left
+			depth++
+		}else{
+			break
+		}
+	}
+	return depth
+}
+
+func(m *MerkleTree) LeafCount() int64{
+	dep := m.Depth()
+	res := math.Pow(2, float64(dep-1))
+	return int64(res)
+}
+
+func (m *MerkleTree) FindInsertPoint() *Node{
+	for _, leaf := range m.Leafs {
+		if leaf.dup{
+			return leaf
+		}else if leaf.virtual{
+			return leaf
+		}
+	}
+	return nil
+}
+
+func (m *MerkleTree) InsertContent(content Content) *MerkleTree{
+	position := m.FindInsertPoint()
+	if position != nil{
+		paths, _ := m.GetNodePath(position)
+		fmt.Print(paths)
+		m.UpdateNode(position, content, paths)
+	}
+	m.merkleRoot = m.Root.Hash
+	return m
+}
+
+func(m *MerkleTree)UpdateNode(node *Node, content Content, paths[][]byte){
+	node.C = content
+	node.dup = false
+	node.virtual = false
+
+	hash, _ := content.CalculateHash()
+	node.Hash = hash
+
+	var parent_node *Node = node.Parent
+	var current_node *Node = node
+
+	for len(paths) > 0{
+		path := paths[0]
+		paths = paths[1:]
+		h := sha256.New()
+
+		chash := append(path, current_node.Hash...)
+		if _, err := h.Write(chash); err != nil {
+			log.Panic(err)
+		}
+		parent_node.Hash = h.Sum(nil)
+		current_node = parent_node
+		parent_node = parent_node.Parent
+	}
+}
 
 func BreadthFirstSerialize(node Node) [][]byte {
 	var result [][]byte
@@ -437,8 +532,6 @@ func DeserializeNodeFromData(data [][]byte) *MerkleTree {
     return tree
 }
 
-
-
 func newNodeFromData(data [] byte) *Node {
 		ns := DeserializeNode(data)
 		node := &Node{
@@ -449,3 +542,4 @@ func newNodeFromData(data [] byte) *Node {
 		}
 		return node
 }
+

@@ -12,6 +12,7 @@ import sutils "github.com/symphonyprotocol/sutil/utils"
 import "github.com/symphonyprotocol/log"
 import "github.com/symphonyprotocol/sutil/elliptic"
 import "sort"
+import _log "log"
 
 const targetBits = 8
 
@@ -95,7 +96,7 @@ func(b *Block) HashAccount(preprocess bool) []byte{
 	}
 
 	sort.Slice(accounts,func(i, j int) bool{
-		return accounts[i].Address < accounts[j].Address
+		return accounts[i].Index < accounts[j].Index
 	})
 
 	for _, ac := range accounts {
@@ -329,7 +330,7 @@ func (block *Block) VerifyCoinbase() bool{
 				account_from.Nonce += 1
 
 				if account_from.GasBalance < 0{
-					fmt.Errorf("account:%v, no enough amount", v.From)
+					_log.Panic(v.From, ": has no enough gas")
 				}
 			}
 

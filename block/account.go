@@ -14,6 +14,7 @@ type Account struct{
 	Balance int64
 	GasBalance int64
 	Nonce  int64
+	Index int64
 }
 
 type AccountHistory struct{
@@ -35,42 +36,36 @@ func (a *Account) Serialize() []byte {
 }
 
 func ChangeBalance(address string, balance int64, gas int64){
+	initaccount := InitAccount(address)
 
 	utils.Update(func(tx *bolt.Tx) error {
 			bucket := tx.Bucket([]byte(accountBucket))
 			accountbytes := bucket.Get([]byte(address))
-			
-			var newbalance int64
-			var newnonce int64
-			var newgas int64
 
-			var newaccount *Account
+			// var newaccount *Account
+			var account *Account
 	
 			if accountbytes == nil{
-				newbalance = balance
-				newgas = gas
-				// newnonce = 0
+				account = initaccount
 			}else{
-				account := DeserializeAccount(accountbytes)
-				newbalance = account.Balance + balance
-				newgas = account.GasBalance + gas
-				newnonce =  account.Nonce
+				account = DeserializeAccount(accountbytes)
 			}
+
+			account.Balance += balance
+			account.GasBalance += gas
 	
-			if newbalance < 0 {
-				return fmt.Errorf("no enough amount")
+			if account.Balance < 0 {
+				log.Panic("no enough amount")
 			}
-			if newgas < 0{
-				return fmt.Errorf("no enount gas")
+			if account.GasBalance < 0{
+				log.Panic("no enount gas")
 			}
-	
-			newaccount = NewAccount(address, newbalance, newnonce, newgas)
 	
 			if accountbytes == nil{
-				bucket.Put([]byte(address), newaccount.Serialize())
+				bucket.Put([]byte(address), account.Serialize())
 			}else{
 				bucket.Delete([]byte(address))
-				bucket.Put([]byte(address), newaccount.Serialize())
+				bucket.Put([]byte(address), account.Serialize())
 			}
 			return nil
 		})
@@ -107,10 +102,6 @@ func GetAccount(address string) *Account{
 		accountbytes := bucket.Get([]byte(address))
 		if accountbytes != nil{
 			account = DeserializeAccount(accountbytes)
-		}else{
-			// bucket.Put()
-			account = NewAccount(address, 0, 0, 0)
-			bucket.Put([]byte(address), account.Serialize())
 		}
 		return nil
 	})
@@ -132,16 +123,35 @@ func DeserializeAccount(d []byte) *Account {
 }
 
 func InitAccount(address string) *Account{
-	account := NewAccount(address, 0 , 0, 0)
+	// account := NewAccount(address, 0 , 0, 0)
+	// return account
+	var idx int64 = 0
+
+	if dbExists(){
+		utils.View(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(accountBucket))
+			if b == nil{
+				return nil
+			}
+			c := b.Cursor()
+			for k, v := c.First(); k != nil; k, v = c.Next() {
+				fmt.Printf("key=%s, value=%s\n", k, v)
+				idx++
+			}
+			return nil
+		})
+	}
+	account := NewAccount(address, 0 , 0, 0, idx)
 	return account
 }
 
-func NewAccount(address string, balance, nonce, gas int64) *Account{
+func NewAccount(address string, balance, nonce, gas, index int64) *Account{
 	account := Account{
 		Address : address,
 		Balance : balance,
 		Nonce   : nonce,
 		GasBalance : gas,
+		Index: index,
 	}
 	return &account
 }
@@ -167,6 +177,7 @@ func GetAllAccount() []*Account {
 	// })
 	return accounts
 }
+
 
 func FindAccount(accounts []*Account , address string) *Account{
 	for _, account := range accounts{

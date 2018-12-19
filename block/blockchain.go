@@ -378,20 +378,24 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	//1. verify block POW
+	fmt.Print("//1. verify block POW")
 	if pow_res := block.VerifyPow(true); !pow_res{
 		log.Panic("block pow verify fail")
 	}
 	//2. verfiy transactions
+	fmt.Print("//2. verfiy transactions")
 	if trans_res := block.VerifyTransaction(); !trans_res{
 		log.Panic("block transaction verify fail")
 	}
 
 	//3. verify block signature
+	fmt.Print("//3. verify block signature")
 	if coinbase_res := block.VerifyCoinbase(); !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
 
 	//4. verify block merkle root hash
+	fmt.Print("//4. verify block merkle root hash")
 	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
 		log.Panic("merkle root hash verify fail")
 	}
@@ -497,7 +501,7 @@ func (bc *Blockchain) CombineBlock(block *Block){
 			log.Panic(err)
 		}
 		bc.tip = block.Header.Hash
-		fmt.Print(block.Header.Hash)
+		// fmt.Print(block.Header.Hash)
 		return nil
 	})
 }
@@ -531,7 +535,7 @@ func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
 
 	hashVerify := b.VerifyHash()
 
-	fmt.Printf("last height: %v, header height:%v", lastHeight, b.Header.Height)
+	fmt.Printf("last height: %v, header height:%v\n", lastHeight, b.Header.Height)
 	if hashCompRes == 0 && hashVerify && lastHeight + 1 == b.Header.Height{
 		return true
 	}
