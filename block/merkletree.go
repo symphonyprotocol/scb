@@ -14,6 +14,7 @@ type Content interface {
 	CalculateHash() ([]byte, error)
 	Equals(other Content) (bool, error)
 	IsDup()(bool, error)
+	SetDup(bool) Content
 }
 
 type MerkleTree struct {
@@ -28,6 +29,7 @@ type Node struct {
 	Right  *Node
 	leaf   bool
 	dup    bool
+	// 是否是虚拟节点, 右子树构建时候除了第一个叶子节点外所有节点为虚拟
 	virtual bool
 	Hash   []byte
 	C      Content
@@ -280,20 +282,12 @@ func (m *MerkleTree) String() string {
 	return s
 }
 
+//获取节点的兄弟节点
 func GetNodeBrother(node *Node) *Node{
 	par_node := node.Parent
 	if par_node == nil{
 		return nil
 	}
-
-	// ok, err := par_node.Left.C.Equals(node.C)
-	// if ok && err == nil{
-	// 	return par_node.Right
-	// }
-	// ok_r, err_r := par_node.Right.C.Equals(node.C)
-	// if ok_r && err_r == nil{
-	// 	return par_node.Left
-	// }
 
 	if bytes.Compare(par_node.Left.Hash, node.Hash) == 0{
 		return par_node.Right
@@ -304,6 +298,7 @@ func GetNodeBrother(node *Node) *Node{
 	}
 }
 
+//通过回溯兄弟节点获取Content的证明路径
 func(m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
 	var paths [][] byte
 
@@ -336,6 +331,7 @@ func(m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
 	return paths, nil
 }
 
+//通过回溯兄弟节点获取节点的证明路径
 func(m *MerkleTree) GetNodePath(node *Node) ([][]byte, error){
 	var paths [][] byte
 
@@ -355,6 +351,7 @@ func(m *MerkleTree) GetNodePath(node *Node) ([][]byte, error){
 	return paths, nil
 }
 
+//merge 左右两颗结构一致的树为新树
 func(left *MerkleTree) MergeTree(right *MerkleTree)(*MerkleTree, error){
 	h := sha256.New()
 	chash := append(left.Root.Hash, right.Root.Hash...)
@@ -370,6 +367,10 @@ func(left *MerkleTree) MergeTree(right *MerkleTree)(*MerkleTree, error){
 		Right: right.Root,
 		Hash:  h.Sum(nil),
 	}
+
+	left.Root.Parent = n
+	right.Root.Parent = n
+
 	t := &MerkleTree{
 		Root:       n,
 		merkleRoot: n.Hash,
@@ -378,6 +379,7 @@ func(left *MerkleTree) MergeTree(right *MerkleTree)(*MerkleTree, error){
 	return t, nil
 }
 
+//树深度
 func(m *MerkleTree) Depth() int64{
 	var depth int64 = 0
 	node := m.Root
@@ -392,12 +394,14 @@ func(m *MerkleTree) Depth() int64{
 	return depth
 }
 
+//树叶子节点的数量
 func(m *MerkleTree) LeafCount() int64{
 	dep := m.Depth()
 	res := math.Pow(2, float64(dep-1))
 	return int64(res)
 }
 
+//寻找merkle的插入节点
 func (m *MerkleTree) FindInsertPoint() *Node{
 	for _, leaf := range m.Leafs {
 		if leaf.dup{
@@ -409,17 +413,34 @@ func (m *MerkleTree) FindInsertPoint() *Node{
 	return nil
 }
 
+/*merkle插入新的节点
+	1. 若能找到插入节点, 更新此插入节点的content, 并更新回溯路径
+	2. 若未能找到插入点，构建当前merkle 右子树 并与当前树合并
+*/
 func (m *MerkleTree) InsertContent(content Content) *MerkleTree{
 	position := m.FindInsertPoint()
 	if position != nil{
 		paths, _ := m.GetNodePath(position)
 		fmt.Print(paths)
 		m.UpdateNode(position, content, paths)
+		m.merkleRoot = m.Root.Hash
+		return m
+	}else{
+			leafCnt := m.LeafCount()
+			var contents []Content
+
+			contents = append(contents, content)
+			for i:=int64(0); i< leafCnt-1; i++{
+				contentDup := content.SetDup(true)
+				contents = append(contents, contentDup)
+			}
+			t2, _ := NewTree(contents)
+			merged_tree, _ := m.MergeTree(t2)
+			return merged_tree
 	}
-	m.merkleRoot = m.Root.Hash
-	return m
 }
 
+//根据证明路径更新节点
 func(m *MerkleTree)UpdateNode(node *Node, content Content, paths[][]byte){
 	node.C = content
 	node.dup = false
@@ -446,6 +467,7 @@ func(m *MerkleTree)UpdateNode(node *Node, content Content, paths[][]byte){
 	}
 }
 
+//广度优先序列化merkle树
 func BreadthFirstSerialize(node Node) [][]byte {
 	var result [][]byte
 	var nodes []Node = []Node{node}
@@ -472,6 +494,7 @@ func BreadthFirstSerialize(node Node) [][]byte {
 	return result
 }
 
+//反序列化数据为merkle树
 func DeserializeNodeFromData(data [][]byte) *MerkleTree {
 	var tree *MerkleTree
 

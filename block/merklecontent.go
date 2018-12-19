@@ -28,6 +28,10 @@ func (t BlockContent) IsDup() (bool, error) {
 	return false, nil
 }
 
+func (t BlockContent) SetDup(bool) Content{
+	return t
+}
+
 
 //TestContent implements the Content interface provided by merkletree and represents the content stored in the tree.
 type TestContent struct {
@@ -52,3 +56,9 @@ func (t TestContent) Equals(other Content) (bool, error) {
 func (t TestContent) IsDup() (bool, error) {
 	return t.Dup, nil
 }
+
+func (t TestContent) SetDup(dup bool) Content{
+	t.Dup = dup
+	return t
+}
+
