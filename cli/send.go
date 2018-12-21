@@ -5,7 +5,7 @@ import (
 	"fmt"
 )
 
-func (cli *CLI) Send(from, to, wif string, amount int64, coinbase bool){
-	fmt.Printf("from :%s , to :%s, amount:%v, coinbase : %v", from , to, amount, coinbase)
-	block.SendTo(from, to, amount, wif, coinbase)
+func (cli *CLI) Send(from, to, wif string, amount int64){
+	fmt.Printf("from :%s , to :%s, amount:%v", from , to, amount)
+	block.SendTo(from, to, amount, wif)
 }

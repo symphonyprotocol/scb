@@ -18,6 +18,7 @@ const blocksBucket = "blocks"
 const accountBucket = "account"
 const transactionBucket = "transaction_pool"
 const transactionMapBucket = "transaction"
+const stateTreeBucket = "statetree"
 // 挖矿奖励金
 const Subsidy = 100
 
@@ -138,6 +139,11 @@ func CreateEmptyBlockchain() *Blockchain {
 			log.Panic(err)
 		}
 
+		_, err2 = tx.CreateBucket([]byte(stateTreeBucket))
+		if err2 != nil {
+			log.Panic(err)
+		}
+
 		return nil
 	})
 
@@ -160,14 +166,14 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 
 	// var tip []byte
 
-	trans := NewTransaction(account.Nonce, Subsidy, "", address, true)
+	trans := NewTransaction(account.Nonce, Subsidy, "", address)
 	trans.Sign(privateKey)
 
 	bc := CreateEmptyBlockchain()
 
-	NewGenesisBlock(trans, address, func (genesis *Block) {
+	NewGenesisBlock(trans, address, func (genesis *Block, statetree *MerkleTree) {
 		genesis.Sign(privateKey)
-		bc.AcceptNewBlock(genesis)
+		bc.AcceptNewBlock(genesis, statetree)
 		if callback != nil {
 			callback(bc)
 		}
@@ -303,15 +309,21 @@ func (bc *Blockchain) FindAllUnpackTransaction() map[string] []* Transaction {
 }
 
 
-func(bc *Blockchain) GetBlockHeight() int64{
+func GetBlockHeight() int64{
 	var lastBlock Block
-	utils.View(func(tx *bolt.Tx) error{
-		bucket := tx.Bucket([]byte(blocksBucket))
-		blockhash := bucket.Get([]byte ("l"))
-		blockdata := bucket.Get(blockhash)
-		lastBlock = *DeserializeBlock(blockdata)
-		return nil
-	})
+	if dbExists(){
+		utils.View(func(tx *bolt.Tx) error{
+			bucket := tx.Bucket([]byte(blocksBucket))
+			blockhash := bucket.Get([]byte ("l"))
+			blockdata := bucket.Get(blockhash)
+			if len(blockdata) > 0{
+				lastBlock = *DeserializeBlock(blockdata)
+			}
+			return nil
+		})
+	}else{
+		return 0
+	}
 	return lastBlock.Header.Height
 }
 
@@ -336,7 +348,7 @@ func(bc *Blockchain) GetBlock(height int64) *Block{
 
 
 // MineBlock mines a new block with the provided transactions
-func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block)) *ProofOfWork {
+func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block, *MerkleTree)) *ProofOfWork {
 	var lastHash []byte
 	var lastHeight int64
 	for _, tx := range transactions{
@@ -362,7 +374,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 		return nil
 	})
 
-	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block){
+	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block, st *MerkleTree){
 		if nil != block{
 			block.Sign(privateKey)
 			// fmt.Println("============mine block done , reward miner ===============")
@@ -371,7 +383,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 			// //reward miner
 			// ChangeBalance(block.Header.Coinbase, Subsidy, true)
 			// fmt.Println("============reward miner ok ===============")
-			callback(block)
+			callback(block, st)
 		}
 	})
 }
@@ -402,7 +414,7 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 }
 
 
-func(bc *Blockchain) AcceptNewBlock(block *Block){
+func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	var blockchain *Blockchain
 
 	if len(bc.tip) != 0 {
@@ -421,7 +433,7 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 		}
 
 		blockchain.CombineBlock(block)
-		postAcceptBlock(block)
+		postAcceptBlock(block, st)
 
 	}else{
 		fmt.Println("block already exists, check timestamp")
@@ -432,15 +444,15 @@ func(bc *Blockchain) AcceptNewBlock(block *Block){
 			blockchain.verifyNewBlock(block)
 			RevertTo(block.Header.Height - 1)
 			blockchain.CombineBlock(block)
-			postAcceptBlock(block)
+			postAcceptBlock(block, st)
 		}
 	}
 }
 
-func postAcceptBlock(block *Block){
+func postAcceptBlock(block *Block, st *MerkleTree){
 		// reward miner
 		if block.Header.Height > 0{
-			ChangeBalance(block.Header.Coinbase, 0, Subsidy)
+			ChangeBalance(block.Header.Coinbase, Subsidy)
 		}
 		
 		//save transaction
@@ -470,22 +482,27 @@ func postAcceptBlock(block *Block){
 		
 		//change balance
 		for _, v := range block.Transactions{
-			
-			if v.Coinbase{
-				if v.From == ""{
-					// 创世交易
-					ChangeBalance(v.To, 0, v.Amount)
-				}else{
-					// ChangeBalance(v.From, v.Amount, 0)
-					ChangeBalance(v.From, v.Amount, 0 - v.Amount)
-				}
+			if v.From == ""{
+				// 创世交易
+				ChangeBalance(v.To, v.Amount)
 				NoncePlus(v.To)
 			}else{
-				ChangeBalance(v.From, 0 - v.Amount, 0)
-				ChangeBalance(v.To, v.Amount, 0)
+				ChangeBalance(v.From, 0 - v.Amount)
+				ChangeBalance(v.To, v.Amount)
 				NoncePlus(v.From)
 			}
 		}
+
+		//save state tree
+		height_str := strconv.FormatInt(block.Header.Height, 10)
+		utils.Update(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(stateTreeBucket))
+			if bucket != nil{
+				bucket.Put([]byte (height_str), st.BreadthFirstSerialize())
+			}
+			return nil
+		})
+
 }
 
 func (bc *Blockchain) CombineBlock(block *Block){
@@ -572,7 +589,7 @@ func RevertTo(Height int64){
 				return nil
 			})
 			// remove reward miner
-			ChangeBalance(b.Header.Coinbase, 0 , 0 - Subsidy)
+			ChangeBalance(b.Header.Coinbase, 0 - Subsidy)
 			//delete saved transaction
 			for _, trans := range b.Transactions{
 				utils.Update(func(tx *bolt.Tx) error {
@@ -599,17 +616,11 @@ func RevertTo(Height int64){
 			}
 			//recovery changed balance
 			for _, v := range b.Transactions{
-				if v.Coinbase{
-					if v.From == ""{
-						// 创世交易
-						// ChangeBalance(v.To, v.Amount, true)
-					}else{
-						ChangeBalance(v.From, 0 - v.Amount, 0)
-						ChangeBalance(v.From, 0, v.Amount)
-					}
+				if v.From == ""{
+					// ChangeBalance(v.To, v.Amount)
 				}else{
-					ChangeBalance(v.From, v.Amount, 0)
-					ChangeBalance(v.To, 0 - v.Amount, 0)
+					ChangeBalance(v.From, v.Amount)
+					ChangeBalance(v.To, 0 - v.Amount)
 				}
 			}
 		}else if b.Header.Height == Height{
@@ -622,6 +633,7 @@ func RevertTo(Height int64){
 		}
 	}
 }
+
 
 func PrintChain() {
 	bc := LoadBlockchain()

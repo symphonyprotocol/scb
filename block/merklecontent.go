@@ -7,6 +7,7 @@ import(
 //implements the Content interface provided by merkletree and represents the content stored in the tree.
 type BlockContent struct {
 	X []byte
+	Dup bool
 }
   
 //CalculateHash hashes the values of a TestContent
@@ -28,7 +29,8 @@ func (t BlockContent) IsDup() (bool, error) {
 	return false, nil
 }
 
-func (t BlockContent) SetDup(bool) Content{
+func (t BlockContent) SetDup(dup bool) Content{
+	t.Dup = dup
 	return t
 }
 

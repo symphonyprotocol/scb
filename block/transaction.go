@@ -21,7 +21,6 @@ type Transaction struct {
 	To        string
 	Amount    int64
 	Signature []byte
-	Coinbase  bool
 }
 
 // Serialized Transaction
@@ -60,7 +59,7 @@ func (tx *Transaction) Sign(privKey *elliptic.PrivateKey){
 }
 
 func (tx *Transaction) Verify() bool{
-	trans := NewTransaction(tx.Nonce, tx.Amount, tx.From, tx.To, tx.Coinbase)
+	trans := NewTransaction(tx.Nonce, tx.Amount, tx.From, tx.To)
 	transbytes := trans.Serialize()
 	recover_pubkey, compressed, err := elliptic.RecoverCompact(elliptic.S256(), tx.Signature, transbytes)
 	if err != nil || !compressed{
@@ -88,14 +87,13 @@ func (tx *Transaction) SetID() {
 }
 
 
-func NewTransaction(nonce, amount int64, from, to string, coinbase bool) *Transaction{
+func NewTransaction(nonce, amount int64, from, to string) *Transaction{
 	trans := Transaction{
 		Nonce : nonce,
 		From : from,
 		To : to,
 		Amount: amount,
 		Signature: []byte(""),
-		Coinbase: coinbase,
 	}
 	trans.SetID()
 	return &trans
@@ -111,7 +109,7 @@ func GetMaxUnpackNonce(transactions []* Transaction) int64{
 	return nonce
 }
 
-func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transaction {
+func SendTo(from, to string, amount int64, wif string) *Transaction {
 	_, validFrom := elliptic.LoadAddress(from)
 	_, validTo := elliptic.LoadAddress(to)
 	prikey, _ := elliptic.LoadWIF(wif)
@@ -128,7 +126,7 @@ func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transacti
 
 	account := GetAccount(from)
 
-	if account.Balance < amount && !coinbase{
+	if account.Balance < amount{
 		log.Panic("ERROR: No enougn amount")
 	}
 
@@ -137,10 +135,10 @@ func SendTo(from, to string, amount int64, wif string, coinbase bool) *Transacti
 
 	unpacktransactions := bc.FindUnpackTransaction(from)
 	if len(unpacktransactions) == 0{
-		trans = NewTransaction(account.Nonce + 1, amount, from, to, coinbase)
+		trans = NewTransaction(account.Nonce + 1, amount, from, to)
 	}else{
 		nonce := GetMaxUnpackNonce(unpacktransactions)
-		trans = NewTransaction(nonce + 1, amount, from, to, coinbase)
+		trans = NewTransaction(nonce + 1, amount, from, to)
 	}
 
 	trans.Sign(private_key)
@@ -167,9 +165,9 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 
 	// flag := make(chan struct{})
 
-	provework := bc.MineBlock(wif, transactions, func(block *Block) {
+	provework := bc.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
 
-		bc.AcceptNewBlock(block)
+		bc.AcceptNewBlock(block, st)
 		// scbutils.Update(func(tx *bolt.Tx) error {
 		// 	b := tx.Bucket([]byte(blocksBucket))
 		// 	err := b.Put(block.Header.Hash, block.Serialize())

@@ -42,7 +42,6 @@ type NodeShadow struct{
 	C Content
 }
 
-
 func (n *NodeShadow) Serialize() []byte {
 	gob.Register(&BlockContent{})
 	// gob.Register(&TestContent{})
@@ -468,9 +467,9 @@ func(m *MerkleTree)UpdateNode(node *Node, content Content, paths[][]byte){
 }
 
 //广度优先序列化merkle树
-func BreadthFirstSerialize(node Node) [][]byte {
+func(m *MerkleTree)BreadthFirstSerialize() []byte {
 	var result [][]byte
-	var nodes []Node = []Node{node}
+	var nodes []Node = []Node{*m.Root}
 
 	for len(nodes) > 0 {
 		node := nodes[0]
@@ -491,11 +490,32 @@ func BreadthFirstSerialize(node Node) [][]byte {
 			nodes = append(nodes, *node.Right)
 		}
 	}
-	return result
+
+	//把所有节点序列化
+	var result2 bytes.Buffer
+	encoder := gob.NewEncoder(&result2)
+
+	err := encoder.Encode(result)
+	if err == nil{
+		return result2.Bytes()
+	}
+
+	return nil
 }
 
 //反序列化数据为merkle树
-func DeserializeNodeFromData(data [][]byte) *MerkleTree {
+func DeserializeNodeFromData(d []byte) *MerkleTree {
+
+	//还原所有节点二进制数据
+	var data [][]byte
+	decoder := gob.NewDecoder(bytes.NewReader(d))
+	err := decoder.Decode(&data)
+	if err != nil {
+		blockLogger.Error("Failed to deserialize: %v", err)
+		return nil
+	}	
+
+	//根据节点还原树
 	var tree *MerkleTree
 
     if len(data) == 0 {
@@ -564,5 +584,40 @@ func newNodeFromData(data [] byte) *Node {
 			C: ns.C,
 		}
 		return node
+}
+
+
+func(m *MerkleTree) UpdateTree(changedAccounts []*Account, newAccounts []*Account) (*MerkleTree, error){
+	if m == nil{
+		var contents []Content
+		for _, account := range newAccounts {
+			contents = append(contents, BlockContent{
+				X : account.Serialize(),
+				Dup: false,
+			})
+		}
+		tree, err := NewTree(contents)
+		return tree, err
+	}
+
+	for _, account := range newAccounts{
+		idx := account.Index
+		updateNode := m.Leafs[idx]
+		paths, _ := m.GetNodePath(updateNode)
+		m.UpdateNode(updateNode, BlockContent{
+			X : account.Serialize(),
+			Dup: false,
+		}, paths)
+	}
+
+	var res_tree *MerkleTree
+	for _, account := range newAccounts{
+		res_tree = m.InsertContent(
+			BlockContent{
+				X : account.Serialize(),
+				Dup: false,
+			})
+	}
+	return res_tree, nil
 }
 

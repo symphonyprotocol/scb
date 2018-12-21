@@ -13,6 +13,8 @@ import "github.com/symphonyprotocol/log"
 import "github.com/symphonyprotocol/sutil/elliptic"
 import "sort"
 import _log "log"
+import "strconv"
+import "github.com/boltdb/bolt"
 
 const targetBits = 8
 
@@ -88,26 +90,22 @@ func (b *Block) HashTransactions() []byte {
 	return nil
 }
 
-func(b *Block) HashAccount(preprocess bool) []byte{
-	var contents [] Content
+func(b *Block) GetAccountTree(preprocess bool) *MerkleTree{
 	accounts := GetAllAccount()
-	if preprocess{
-		accounts = b.PreProcessAccountBalance(accounts)
-	}
-
 	sort.Slice(accounts,func(i, j int) bool{
 		return accounts[i].Index < accounts[j].Index
 	})
-
-	for _, ac := range accounts {
-		contents = append(contents, BlockContent{X : ac.Serialize()})
+	lastStateTree := GetLastMerkleTree()
+	if preprocess{
+		change_accounts, new_accounts := b.PreProcessAccountBalance(accounts)
+		tree, err := lastStateTree.UpdateTree(change_accounts, new_accounts)
+		if err == nil{
+			return tree
+		}
 	}
-	mTree, err := NewTree(contents)
-	if err == nil{
-		return mTree.MerkleRoot()
-	}
-	return nil
+	return lastStateTree
 }
+
 
 func (b *Block) Sign(privKey *elliptic.PrivateKey){
 	blockbytes := b.Serialize()
@@ -170,7 +168,7 @@ func (pow *ProofOfWork) Stop() {
 }
 
 // NewBlock creates and returns Block
-func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, coinbase string,  callback func(*Block, )) *ProofOfWork {
+func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, coinbase string,  callback func(*Block, *MerkleTree)) *ProofOfWork {
 	// rootHash := 
 	header := BlockHeader{
 		Timestamp: time.Now().Unix(),
@@ -185,28 +183,48 @@ func NewBlock(transactions []*Transaction, prevBlockHash []byte, height int64, c
 		Transactions: transactions,
 	}
 	blockRootHash := block.HashTransactions()
-	stateRootHash := block.HashAccount(true)
+	accountTree := block.GetAccountTree(true)
+
 	block.Header.MerkleRootHash = blockRootHash
-	block.Header.MerkleRootAccountHash = stateRootHash
+	block.Header.MerkleRootAccountHash = accountTree.MerkleRoot()
 
 	pow := NewProofOfWork(block)
 	pow.Run(func (nonce int64, hash []byte) {
 		block.Header.Hash = hash[:]
 		block.Header.Nonce = nonce
 		if callback != nil {
-			callback(block)
+			callback(block, accountTree)
 		}
 	})
 	return pow
 }
 
+func GetLastMerkleTree() *MerkleTree{
+	height := GetBlockHeight()
+	height_str := strconv.FormatInt(height, 10)
+	var tree  *MerkleTree = nil
+
+	utils.View(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(stateTreeBucket))
+		if bucket != nil{
+			treebytes := bucket.Get([]byte (height_str))
+			// blockdata := bucket.Get(blockhash)
+			if len(treebytes) > 0{
+				tree = DeserializeNodeFromData(treebytes)
+			}
+		}
+		return nil
+	})
+
+	return tree
+}
 
 func (pow *ProofOfWork) prepareData(nonce int64, preprocess bool) []byte {
 	data := bytes.Join(
 		[][]byte{
 			pow.block.Header.PrevBlockHash,
 			pow.block.HashTransactions(),
-			pow.block.HashAccount(preprocess),
+			pow.block.GetAccountTree(preprocess).MerkleRoot(),
 			utils.IntToHex(pow.block.Header.Timestamp),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(nonce),
@@ -236,7 +254,7 @@ func (block *Block) prepareData(preprocess bool) []byte{
 		[][]byte{
 			block.Header.PrevBlockHash,
 			block.HashTransactions(),
-			block.HashAccount(preprocess),
+			block.GetAccountTree(preprocess).MerkleRoot(),
 			utils.IntToHex(block.Header.Timestamp),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(block.Header.Nonce),
@@ -278,7 +296,7 @@ func (block *Block) VerifyHash() bool{
 }
 
 // NewGenesisBlock creates and returns genesis Block
-func NewGenesisBlock(trans *Transaction, coinbase string,  callback func(*Block)) {
+func NewGenesisBlock(trans *Transaction, coinbase string,  callback func(*Block, *MerkleTree)) {
 	fmt.Println("New Genesis Block")
 	NewBlock([]*Transaction{trans}, []byte{}, 0, coinbase, callback)
 }
@@ -306,57 +324,109 @@ func (block *Block) VerifyCoinbase() bool{
 	return res
  }
 
- func (block *Block) PreProcessAccountBalance(accounts [] *Account) [] *Account{
-	for _, v := range block.Transactions{
-		account_from := FindAccount(accounts, v.From)
-		account_to := FindAccount(accounts, v.To)
+ func (block *Block) PreProcessAccountBalance(accounts [] *Account) ([]*Account, []*Account){
+		var changedAccounts []*Account
+		var newAccounts [] *Account
 
-		if v.Coinbase{
-			if v.From == ""{
-				// 创世交易
-				if account_to == nil{
-					account_to = InitAccount(v.To)
-					// account_to.GasBalance += v.Amount
-					account_to.Nonce += 1
-					accounts = append(accounts, account_to)
+		for _, v := range block.Transactions{
+			account_from := FindAccount(accounts, v.From)
+			account_to := FindAccount(accounts, v.To)
+				if v.From == ""{
+					// 创世交易
+					if account_to == nil{
+						account_to = InitAccount(v.To)
+						account_to.Nonce += 1
+						newAccounts = append(newAccounts, account_to)
+					}
+				}else{
+					if account_from == nil{
+						_log.Panic(v.From, ": no this account")
+					}
+					if account_to == nil{
+						account_to = InitAccount(v.To)
+						account_to.Nonce += 1
+						account_to.Balance += v.Amount
+						account_from.Balance -= v.Amount
+						newAccounts = append(newAccounts, account_to)
+						changedAccounts = append(changedAccounts, account_from)
+					}else{
+						account_to.Balance += v.Amount
+						account_from.Balance -= v.Amount
+						changedAccounts = append(changedAccounts, account_from)
+						changedAccounts = append(changedAccounts, account_to)
+
+					}
+					if account_from.Balance < 0{
+						_log.Panic(v.From, ": has no enough amount to continue the transaction")
+					}
 				}
-			}else{
-				if account_from == nil{
-					account_from = InitAccount(v.From)
-					accounts = append(accounts, account_from)
-				}
-				account_from.GasBalance -= v.Amount
-				account_from.Balance += v.Amount
-				account_from.Nonce += 1
-
-				if account_from.GasBalance < 0{
-					_log.Panic(v.From, ": has no enough gas")
-				}
-			}
-
-		}else{
-			if account_from == nil{
-				account_from = InitAccount(v.From)
-				accounts = append(accounts, account_from)
-			}
-			if account_to == nil{
-				account_to = InitAccount(v.To)
-				accounts = append(accounts, account_to)
-			}
-
-			account_from.Balance -= v.Amount
-			account_to.Balance += v.Amount
-
-			if account_from.Balance < 0{
-				fmt.Errorf("account:%v, no enough amount", v.From)
-			}
-			account_from.Nonce += 1
-			account_to.Nonce += 1
 		}
-	}
-	reward_addr := block.Header.Coinbase
-	coinbase := FindAccount(accounts, reward_addr)
-	coinbase.GasBalance += Subsidy
-	
-	return accounts
+		
+		var coinbase_account *Account = nil
+		coinbase_account = FindAccount(changedAccounts, block.Header.Coinbase)
+		if coinbase_account == nil{
+			coinbase_account = FindAccount(newAccounts, block.Header.Coinbase)
+			if coinbase_account == nil{
+				coinbase_account = InitAccount(block.Header.Coinbase)
+				newAccounts = append(newAccounts, coinbase_account)
+			}
+		}
+		coinbase_account.Balance += Subsidy
+
+		return changedAccounts, newAccounts
  }
+
+
+
+	// for _, v := range block.Transactions{
+	// 	account_from := FindAccount(accounts, v.From)
+	// 	account_to := FindAccount(accounts, v.To)
+
+	// 	if v.Coinbase{
+	// 		if v.From == ""{
+	// 			// 创世交易
+	// 			if account_to == nil{
+	// 				account_to = InitAccount(v.To)
+	// 				// account_to.GasBalance += v.Amount
+	// 				account_to.Nonce += 1
+	// 				accounts = append(accounts, account_to)
+	// 			}
+	// 		}else{
+	// 			if account_from == nil{
+	// 				account_from = InitAccount(v.From)
+	// 				accounts = append(accounts, account_from)
+	// 			}
+	// 			account_from.GasBalance -= v.Amount
+	// 			account_from.Balance += v.Amount
+	// 			account_from.Nonce += 1
+
+	// 			if account_from.GasBalance < 0{
+	// 				_log.Panic(v.From, ": has no enough gas")
+	// 			}
+	// 		}
+
+	// 	}else{
+	// 		if account_from == nil{
+	// 			account_from = InitAccount(v.From)
+	// 			accounts = append(accounts, account_from)
+	// 		}
+	// 		if account_to == nil{
+	// 			account_to = InitAccount(v.To)
+	// 			accounts = append(accounts, account_to)
+	// 		}
+
+	// 		account_from.Balance -= v.Amount
+	// 		account_to.Balance += v.Amount
+
+	// 		if account_from.Balance < 0{
+	// 			fmt.Errorf("account:%v, no enough amount", v.From)
+	// 		}
+	// 		account_from.Nonce += 1
+	// 		account_to.Nonce += 1
+	// 	}
+	// }
+	// reward_addr := block.Header.Coinbase
+	// coinbase := FindAccount(accounts, reward_addr)
+	// coinbase.GasBalance += Subsidy
+
+//  }

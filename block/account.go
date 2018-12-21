@@ -12,7 +12,6 @@ import "github.com/symphonyprotocol/scb/utils"
 type Account struct{
 	Address string
 	Balance int64
-	GasBalance int64
 	Nonce  int64
 	Index int64
 }
@@ -35,7 +34,7 @@ func (a *Account) Serialize() []byte {
 	return result.Bytes()
 }
 
-func ChangeBalance(address string, balance int64, gas int64){
+func ChangeBalance(address string, balance int64){
 	initaccount := InitAccount(address)
 
 	utils.Update(func(tx *bolt.Tx) error {
@@ -52,13 +51,9 @@ func ChangeBalance(address string, balance int64, gas int64){
 			}
 
 			account.Balance += balance
-			account.GasBalance += gas
 	
 			if account.Balance < 0 {
 				log.Panic("no enough amount")
-			}
-			if account.GasBalance < 0{
-				log.Panic("no enount gas")
 			}
 	
 			if accountbytes == nil{
@@ -85,14 +80,14 @@ func NoncePlus(address string){
 	})
 }
 
-func GetBalance(address string) (int64,int64){
+func GetBalance(address string) (int64){
 	// var balance int64 = 0
 	account := GetAccount(address)
 	if account != nil{
 		fmt.Printf("nonce is :%v\n",  account.Nonce)
-		return account.Balance, account.GasBalance
+		return account.Balance
 	}
-	return -1, -1
+	return -1
 }
 
 func GetAccount(address string) *Account{
@@ -141,16 +136,15 @@ func InitAccount(address string) *Account{
 			return nil
 		})
 	}
-	account := NewAccount(address, 0 , 0, 0, idx)
+	account := NewAccount(address, 0, 0, idx)
 	return account
 }
 
-func NewAccount(address string, balance, nonce, gas, index int64) *Account{
+func NewAccount(address string, balance, nonce, index int64) *Account{
 	account := Account{
 		Address : address,
 		Balance : balance,
 		Nonce   : nonce,
-		GasBalance : gas,
 		Index: index,
 	}
 	return &account
