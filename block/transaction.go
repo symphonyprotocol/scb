@@ -52,10 +52,11 @@ func (tx *Transaction) IDString() string {
 	return utils.BytesToString(tx.ID)
 }
 
-func (tx *Transaction) Sign(privKey *elliptic.PrivateKey){
+func (tx *Transaction) Sign(privKey *elliptic.PrivateKey) *Transaction{
 	transbytes := tx.Serialize()
 	sign_bytes, _ := elliptic.SignCompact(elliptic.S256(), privKey,  transbytes, true)
 	tx.Signature = sign_bytes
+	return tx
 }
 
 func (tx *Transaction) Verify() bool{
@@ -141,7 +142,7 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 		trans = NewTransaction(nonce + 1, amount, from, to)
 	}
 
-	trans.Sign(private_key)
+	trans = trans.Sign(private_key)
 
 	bc.SaveTransaction(trans)
 	return trans

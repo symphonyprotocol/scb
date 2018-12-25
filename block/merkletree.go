@@ -43,8 +43,6 @@ type NodeShadow struct{
 }
 
 func (n *NodeShadow) Serialize() []byte {
-	gob.Register(&BlockContent{})
-	// gob.Register(&TestContent{})
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
 

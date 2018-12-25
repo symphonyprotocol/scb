@@ -6,6 +6,6 @@ import (
 )
 
 func (cli *CLI) Send(from, to, wif string, amount int64){
-	fmt.Printf("from :%s , to :%s, amount:%v", from , to, amount)
+	fmt.Printf("from :%s , to :%s, amount:%v\n", from , to, amount)
 	block.SendTo(from, to, amount, wif)
 }

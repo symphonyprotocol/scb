@@ -167,12 +167,12 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	// var tip []byte
 
 	trans := NewTransaction(account.Nonce, Subsidy, "", address)
-	trans.Sign(privateKey)
+	trans = trans.Sign(privateKey)
 
 	bc := CreateEmptyBlockchain()
 
 	NewGenesisBlock(trans, address, func (genesis *Block, statetree *MerkleTree) {
-		genesis.Sign(privateKey)
+		genesis = genesis.Sign(privateKey)
 		bc.AcceptNewBlock(genesis, statetree)
 		if callback != nil {
 			callback(bc)
@@ -336,7 +336,7 @@ func(bc *Blockchain) GetBlock(height int64) *Block{
 		if b == nil{
 			return nil
 		}
-		if len(b.Header.PrevBlockHash) == 0 {
+		if b.Header.PrevBlockHash == nil {
 			break
 		}
 		if b.Header.Height == height{
@@ -376,7 +376,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 
 	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block, st *MerkleTree){
 		if nil != block{
-			block.Sign(privateKey)
+			block = block.Sign(privateKey)
 			// fmt.Println("============mine block done , reward miner ===============")
 			// fmt.Printf("block.Header.Coinbase %v", block.Header.Coinbase)
 			// fmt.Printf("address from wif %v", address)
@@ -579,7 +579,7 @@ func RevertTo(Height int64){
 
 	for{
 		b := bci.Next()
-		if len(b.Header.PrevBlockHash) == 0 {
+		if b.Header.PrevBlockHash == nil {
 			break
 		}		
 		if b.Header.Height > Height{
@@ -654,7 +654,7 @@ func PrintChain() {
 		fmt.Printf("Signature Verify:%v \n", b.VerifyCoinbase())
 		fmt.Println()
 
-		if len(b.Header.PrevBlockHash) == 0 {
+		if b.Header.PrevBlockHash == nil {
 			break
 		}
 	}

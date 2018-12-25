@@ -35,9 +35,11 @@ type BlockHeader struct{
   	Signature 	   []byte
 }
 
+
 type Block struct {
 	Header BlockHeader
 	Transactions  []*Transaction
+	Content []byte
 }
 
 // ProofOfWork represents a proof-of-work
@@ -60,6 +62,7 @@ func (b *Block) Serialize() []byte {
 	}
 	return result.Bytes()
 }
+
 
 // Deserializes a block
 func DeserializeBlock(d []byte) *Block {
@@ -107,10 +110,13 @@ func(b *Block) GetAccountTree(preprocess bool) *MerkleTree{
 }
 
 
-func (b *Block) Sign(privKey *elliptic.PrivateKey){
+func (b *Block) Sign(privKey *elliptic.PrivateKey) *Block{
 	blockbytes := b.Serialize()
-	sign_bytes, _ := elliptic.SignCompact(elliptic.S256(), privKey,  blockbytes, true)
+	fmt.Println("sign bytes:", blockbytes)
+	sign_bytes, _ := elliptic.SignCompact(elliptic.S256(), privKey, blockbytes, true)
 	b.Header.Signature = sign_bytes
+	b.Content = blockbytes
+	return b
 }
 
 func (h BlockHeader) HashString() string {
@@ -298,11 +304,15 @@ func (block *Block) VerifyHash() bool{
 // NewGenesisBlock creates and returns genesis Block
 func NewGenesisBlock(trans *Transaction, coinbase string,  callback func(*Block, *MerkleTree)) {
 	fmt.Println("New Genesis Block")
-	NewBlock([]*Transaction{trans}, []byte{}, 0, coinbase, callback)
+	NewBlock([]*Transaction{trans}, nil, 0, coinbase, callback)
 }
 
 func (block *Block) VerifyCoinbase() bool{
-	recover_pubkey, compressed, err := elliptic.RecoverCompact(elliptic.S256(), block.Header.Signature, block.Serialize())
+	signature := block.Header.Signature
+
+	blockbyts := block.Content
+	recover_pubkey, compressed, err := elliptic.RecoverCompact(elliptic.S256(), signature, blockbyts)
+
 	if err != nil || !compressed{
 		return false
 	}else{
@@ -336,6 +346,7 @@ func (block *Block) VerifyCoinbase() bool{
 					if account_to == nil{
 						account_to = InitAccount(v.To)
 						account_to.Nonce += 1
+						accounts = append(accounts, account_to)
 						newAccounts = append(newAccounts, account_to)
 					}
 				}else{
@@ -344,17 +355,27 @@ func (block *Block) VerifyCoinbase() bool{
 					}
 					if account_to == nil{
 						account_to = InitAccount(v.To)
+						account_from.Nonce += 1
 						account_to.Nonce += 1
 						account_to.Balance += v.Amount
 						account_from.Balance -= v.Amount
+						accounts = append(accounts, account_to)
 						newAccounts = append(newAccounts, account_to)
-						changedAccounts = append(changedAccounts, account_from)
+
+						if nil == FindAccount(changedAccounts, v.From){
+							changedAccounts = append(changedAccounts, account_from)
+						}
 					}else{
 						account_to.Balance += v.Amount
 						account_from.Balance -= v.Amount
-						changedAccounts = append(changedAccounts, account_from)
-						changedAccounts = append(changedAccounts, account_to)
-
+						account_from.Nonce += 1
+						account_to.Nonce += 1
+						if nil == FindAccount(changedAccounts, v.From){
+							changedAccounts = append(changedAccounts, account_from)
+						}
+						if nil == FindAccount(changedAccounts, v.To) && nil == FindAccount(newAccounts, v.To){
+							changedAccounts = append(changedAccounts, account_to)
+						}
 					}
 					if account_from.Balance < 0{
 						_log.Panic(v.From, ": has no enough amount to continue the transaction")
@@ -372,6 +393,7 @@ func (block *Block) VerifyCoinbase() bool{
 			}
 		}
 		coinbase_account.Balance += Subsidy
+		// coinbase_account.Nonce += 1
 
 		return changedAccounts, newAccounts
  }
