@@ -346,6 +346,22 @@ func(bc *Blockchain) GetBlock(height int64) *Block{
 	return nil
 } 
 
+func (bc *Blockchain) GetBlockByHash(hash []byte) *Block {
+	var the_block *Block = nil
+	if dbExists() {
+		utils.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(blocksBucket))
+			blockdata := bucket.Get(hash)
+			if len(blockdata) > 0 {
+				the_block = DeserializeBlock(blockdata)
+			}
+			return nil
+		})
+	}
+
+	return the_block
+}
+
 
 // MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block, *MerkleTree)) *ProofOfWork {
