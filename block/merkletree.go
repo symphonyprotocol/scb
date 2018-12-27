@@ -418,7 +418,6 @@ func (m *MerkleTree) InsertContent(content Content) *MerkleTree{
 	position := m.FindInsertPoint()
 	if position != nil{
 		paths, _ := m.GetNodePath(position)
-		fmt.Print(paths)
 		m.UpdateNode(position, content, paths)
 		m.merkleRoot = m.Root.Hash
 		return m
@@ -544,6 +543,7 @@ func DeserializeNodeFromData(d []byte) *MerkleTree {
 			leafs = append(leafs,left)
 		}
 		node.Left = left
+		left.Parent = node
 		
         if node.Left != nil {
             queue = append(queue, node.Left) 
@@ -556,7 +556,8 @@ func DeserializeNodeFromData(d []byte) *MerkleTree {
 			if right.leaf{
 				leafs = append(leafs,right)
 			}
-            node.Right = right
+			node.Right = right
+			right.Parent = node
             if node.Right != nil {
                 queue = append(queue, node.Right)
             }
@@ -589,8 +590,9 @@ func(m *MerkleTree) UpdateTree(changedAccounts []*Account, newAccounts []*Accoun
 	if m == nil{
 		var contents []Content
 		for _, account := range newAccounts {
+			account_bytes := account.Serialize()
 			contents = append(contents, BlockContent{
-				X : account.Serialize(),
+				X : account_bytes,
 				Dup: false,
 			})
 		}
@@ -598,21 +600,25 @@ func(m *MerkleTree) UpdateTree(changedAccounts []*Account, newAccounts []*Accoun
 		return tree, err
 	}
 
-	for _, account := range newAccounts{
-		idx := account.Index
+	for _, account := range changedAccounts{
+		idx := account.Index - 1
 		updateNode := m.Leafs[idx]
 		paths, _ := m.GetNodePath(updateNode)
+
+		account_bytes := account.Serialize()
 		m.UpdateNode(updateNode, BlockContent{
-			X : account.Serialize(),
+			X : account_bytes,
 			Dup: false,
 		}, paths)
 	}
 
 	var res_tree *MerkleTree
 	for _, account := range newAccounts{
+		account_bytes := account.Serialize()
+
 		res_tree = m.InsertContent(
 			BlockContent{
-				X : account.Serialize(),
+				X : account_bytes,
 				Dup: false,
 			})
 	}

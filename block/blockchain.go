@@ -19,6 +19,7 @@ const accountBucket = "account"
 const transactionBucket = "transaction_pool"
 const transactionMapBucket = "transaction"
 const stateTreeBucket = "statetree"
+const accountCacheBucket = "account_cache"
 // 挖矿奖励金
 const Subsidy = 100
 
@@ -143,6 +144,10 @@ func CreateEmptyBlockchain() *Blockchain {
 		if err2 != nil {
 			log.Panic(err)
 		}
+		_, err2 = tx.CreateBucket([]byte(accountCacheBucket))
+		if err2 != nil {
+			log.Panic(err)
+		}
 
 		return nil
 	})
@@ -162,7 +167,7 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
 	address := publickey.ToAddressCompressed()
 	fmt.Printf("address from wif %v\n", address)
-	account := InitAccount(address)
+	account := InitAccount(address, 0)
 
 	// var tip []byte
 
@@ -177,57 +182,6 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 		if callback != nil {
 			callback(bc)
 		}
-		// utils.Update(func(tx *bolt.Tx) error {
-		// 	b, err := tx.CreateBucket([]byte(accountBucket))
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-	
-		// 	err = b.Put([]byte(address), account.Serialize())
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-	
-		// 	b, err = tx.CreateBucket([]byte(blocksBucket))
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-	
-		// 	err = b.Put(genesis.Header.Hash, genesis.Serialize())
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-	
-		// 	err = b.Put([]byte("l"), genesis.Header.Hash)
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-		// 	tip = genesis.Header.Hash
-
-
-		// 	b, err = tx.CreateBucket([]byte(transactionMapBucket))
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-			
-		// 	//save transaction block map 
-		// 	// buf := make([]byte, binary.MaxVarintLen64)
-		// 	// len := binary.PutVarint(buf, genesis.Header.Height)
-		// 	// buf = buf[0:len]
-		// 	err = b.Put(trans.ID, genesis.Header.Hash)
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-
-		// 	_, err2 := tx.CreateBucket([]byte(transactionBucket))
-		// 	if err2 != nil {
-		// 		log.Panic(err)
-		// 	}
-	
-		// 	return nil
-		// })
-		// ChangeBalance(genesis.Header.Coinbase, 0 , Subsidy)
-		// bc := Blockchain{tip}
 	})
 }
 
@@ -393,12 +347,6 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 	return NewBlock(transactions, lastHash, lastHeight + 1, address, func(block * Block, st *MerkleTree){
 		if nil != block{
 			block = block.Sign(privateKey)
-			// fmt.Println("============mine block done , reward miner ===============")
-			// fmt.Printf("block.Header.Coinbase %v", block.Header.Coinbase)
-			// fmt.Printf("address from wif %v", address)
-			// //reward miner
-			// ChangeBalance(block.Header.Coinbase, Subsidy, true)
-			// fmt.Println("============reward miner ok ===============")
 			callback(block, st)
 		}
 	})
@@ -406,24 +354,24 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	//1. verify block POW
-	fmt.Print("//1. verify block POW")
+	fmt.Println("//1. verify block POW")
 	if pow_res := block.VerifyPow(true); !pow_res{
 		log.Panic("block pow verify fail")
 	}
 	//2. verfiy transactions
-	fmt.Print("//2. verfiy transactions")
+	fmt.Println("//2. verfiy transactions")
 	if trans_res := block.VerifyTransaction(); !trans_res{
 		log.Panic("block transaction verify fail")
 	}
 
 	//3. verify block signature
-	fmt.Print("//3. verify block signature")
+	fmt.Println("//3. verify block signature")
 	if coinbase_res := block.VerifyCoinbase(); !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
 
 	//4. verify block merkle root hash
-	fmt.Print("//4. verify block merkle root hash")
+	fmt.Println("//4. verify block merkle root hash")
 	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
 		log.Panic("merkle root hash verify fail")
 	}
@@ -466,58 +414,82 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 }
 
 func postAcceptBlock(block *Block, st *MerkleTree){
-		// reward miner
-		if block.Header.Height > 0{
-			ChangeBalance(block.Header.Coinbase, Subsidy)
-		}
-		
-		//save transaction
-		for _, trans := range block.Transactions{
-			utils.Update(func(tx *bolt.Tx) error {
-				b := tx.Bucket([]byte(transactionMapBucket))
-				err := b.Put(trans.ID, block.Header.Hash)
-				if err != nil {
-					log.Panic(err)
-				}
-				return nil
-			})
-		}
-
-		//delete packed transaction
-		for _, trans := range block.Transactions{
-			utils.Update(func(tx *bolt.Tx) error {
-				b := tx.Bucket([]byte(transactionBucket))
-				err := b.Delete(trans.ID)
-				if err != nil {
-					// log.Panic(err)
-					fmt.Printf("an error when delete:%v", err.Error)
-				}
-				return nil
-			})
-		}
-		
-		//change balance
-		for _, v := range block.Transactions{
-			if v.From == ""{
-				// 创世交易
-				ChangeBalance(v.To, v.Amount)
-				NoncePlus(v.To)
-			}else{
-				ChangeBalance(v.From, 0 - v.Amount)
-				ChangeBalance(v.To, v.Amount)
-				NoncePlus(v.From)
-			}
-		}
-
-		//save state tree
-		height_str := strconv.FormatInt(block.Header.Height, 10)
+	accounts := GetAllAccount()
+	change_accounts, new_accounts := block.PreProcessAccountBalance(accounts)
+	
+	for _, v := range change_accounts{
 		utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(stateTreeBucket))
-			if bucket != nil{
-				bucket.Put([]byte (height_str), st.BreadthFirstSerialize())
+			bucket := tx.Bucket([]byte(accountBucket))
+			accountbytes := bucket.Get([]byte(v.Address))
+			if accountbytes != nil{
+				bucket.Delete([]byte(v.Address))
+				bucket.Put([]byte(v.Address), v.Serialize())
 			}
 			return nil
 		})
+	}
+	for _, v := range new_accounts{
+		utils.Update(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(accountBucket))
+			bucket.Put([]byte(v.Address), v.Serialize())
+			return nil
+		})
+	}
+
+	//save state tree
+	height_str := strconv.FormatInt(block.Header.Height, 10)
+	utils.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(stateTreeBucket))
+		if bucket != nil{
+			bucket.Put([]byte (height_str), st.BreadthFirstSerialize())
+		}
+		return nil
+	})
+	
+
+
+		// // reward miner
+		// if block.Header.Height > 0{
+		// 	// ChangeBalance(block.Header.Coinbase, Subsidy)
+		// }
+		
+		// //save transaction
+		// for _, trans := range block.Transactions{
+		// 	utils.Update(func(tx *bolt.Tx) error {
+		// 		b := tx.Bucket([]byte(transactionMapBucket))
+		// 		err := b.Put(trans.ID, block.Header.Hash)
+		// 		if err != nil {
+		// 			log.Panic(err)
+		// 		}
+		// 		return nil
+		// 	})
+		// }
+
+		// //delete packed transaction
+		// for _, trans := range block.Transactions{
+		// 	utils.Update(func(tx *bolt.Tx) error {
+		// 		b := tx.Bucket([]byte(transactionBucket))
+		// 		err := b.Delete(trans.ID)
+		// 		if err != nil {
+		// 			// log.Panic(err)
+		// 			fmt.Printf("an error when delete:%v", err.Error)
+		// 		}
+		// 		return nil
+		// 	})
+		// }
+		
+		// //change balance
+		// for _, v := range block.Transactions{
+		// 	if v.From == ""{
+		// 		// 创世交易
+		// 		// ChangeBalance(v.To, v.Amount)
+		// 		// NoncePlus(v.To)
+		// 	}else{
+		// 		// ChangeBalance(v.From, 0 - v.Amount)
+		// 		// ChangeBalance(v.To, v.Amount)
+		// 		// NoncePlus(v.From)
+		// 	}
+		// }
 
 }
 
@@ -605,7 +577,7 @@ func RevertTo(Height int64){
 				return nil
 			})
 			// remove reward miner
-			ChangeBalance(b.Header.Coinbase, 0 - Subsidy)
+			// ChangeBalance(b.Header.Coinbase, 0 - Subsidy)
 			//delete saved transaction
 			for _, trans := range b.Transactions{
 				utils.Update(func(tx *bolt.Tx) error {
@@ -635,8 +607,8 @@ func RevertTo(Height int64){
 				if v.From == ""{
 					// ChangeBalance(v.To, v.Amount)
 				}else{
-					ChangeBalance(v.From, v.Amount)
-					ChangeBalance(v.To, 0 - v.Amount)
+					// ChangeBalance(v.From, v.Amount)
+					// ChangeBalance(v.To, 0 - v.Amount)
 				}
 			}
 		}else if b.Header.Height == Height{

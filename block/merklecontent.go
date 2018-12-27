@@ -26,7 +26,7 @@ func (t BlockContent) Equals(other Content) (bool, error) {
 }
 
 func (t BlockContent) IsDup() (bool, error) {
-	return false, nil
+	return t.Dup, nil
 }
 
 func (t BlockContent) SetDup(dup bool) Content{

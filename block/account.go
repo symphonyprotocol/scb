@@ -16,13 +16,8 @@ type Account struct{
 	Index int64
 }
 
-type AccountHistory struct{
-	Timestamp int64
-	Address string
-	ExchangeAmount int64
-}
 
-// Serializes the block
+// Serializes the account
 func (a *Account) Serialize() []byte {
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
@@ -34,37 +29,40 @@ func (a *Account) Serialize() []byte {
 	return result.Bytes()
 }
 
-func ChangeBalance(address string, balance int64){
-	initaccount := InitAccount(address)
 
-	utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(accountBucket))
-			accountbytes := bucket.Get([]byte(address))
 
-			// var newaccount *Account
-			var account *Account
-	
-			if accountbytes == nil{
-				account = initaccount
-			}else{
-				account = DeserializeAccount(accountbytes)
-			}
 
-			account.Balance += balance
+// func ChangeBalance(address string, balance int64){
+// 	// initaccount := InitAccount(address)
+
+// 	utils.Update(func(tx *bolt.Tx) error {
+// 			bucket := tx.Bucket([]byte(accountBucket))
+// 			accountbytes := bucket.Get([]byte(address))
+
+// 			// var newaccount *Account
+// 			var account *Account
 	
-			if account.Balance < 0 {
-				log.Panic("no enough amount")
-			}
+// 			if accountbytes == nil{
+// 				account = initaccount
+// 			}else{
+// 				account = DeserializeAccount(accountbytes)
+// 			}
+
+// 			account.Balance += balance
 	
-			if accountbytes == nil{
-				bucket.Put([]byte(address), account.Serialize())
-			}else{
-				bucket.Delete([]byte(address))
-				bucket.Put([]byte(address), account.Serialize())
-			}
-			return nil
-		})
-}
+// 			if account.Balance < 0 {
+// 				log.Panic("no enough amount")
+// 			}
+	
+// 			if accountbytes == nil{
+// 				bucket.Put([]byte(address), account.Serialize())
+// 			}else{
+// 				bucket.Delete([]byte(address))
+// 				bucket.Put([]byte(address), account.Serialize())
+// 			}
+// 			return nil
+// 		})
+// }
 
 func NoncePlus(address string){
 	utils.Update(func(tx *bolt.Tx) error {
@@ -117,28 +115,30 @@ func DeserializeAccount(d []byte) *Account {
 	return &account
 }
 
-func InitAccount(address string) *Account{
+
+func InitAccount(address string, idx int64) *Account{
 	// account := NewAccount(address, 0 , 0, 0)
 	// return account
-	var idx int64 = 0
+	// var idx int64 = 0
 
-	if dbExists(){
-		utils.View(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(accountBucket))
-			if b == nil{
-				return nil
-			}
-			c := b.Cursor()
-			for k, v := c.First(); k != nil; k, v = c.Next() {
-				fmt.Printf("key=%s, value=%s\n", k, v)
-				idx++
-			}
-			return nil
-		})
-	}
+	// if dbExists(){
+	// 	utils.View(func(tx *bolt.Tx) error {
+	// 		b := tx.Bucket([]byte(accountBucket))
+	// 		if b == nil{
+	// 			return nil
+	// 		}
+	// 		c := b.Cursor()
+	// 		for k, v := c.First(); k != nil; k, v = c.Next() {
+	// 			fmt.Printf("key=%s, value=%s\n", k, v)
+	// 			idx++
+	// 		}
+	// 		return nil
+	// 	})
+	// }
 	account := NewAccount(address, 0, 0, idx)
 	return account
 }
+
 
 func NewAccount(address string, balance, nonce, index int64) *Account{
 	account := Account{
@@ -149,6 +149,7 @@ func NewAccount(address string, balance, nonce, index int64) *Account{
 	}
 	return &account
 }
+
 
 func GetAllAccount() []*Account {
 	var accounts [] *Account

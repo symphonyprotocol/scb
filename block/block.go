@@ -40,6 +40,7 @@ type Block struct {
 	Header BlockHeader
 	Transactions  []*Transaction
 	Content []byte
+
 }
 
 // ProofOfWork represents a proof-of-work
@@ -112,7 +113,6 @@ func(b *Block) GetAccountTree(preprocess bool) *MerkleTree{
 
 func (b *Block) Sign(privKey *elliptic.PrivateKey) *Block{
 	blockbytes := b.Serialize()
-	fmt.Println("sign bytes:", blockbytes)
 	sign_bytes, _ := elliptic.SignCompact(elliptic.S256(), privKey, blockbytes, true)
 	b.Header.Signature = sign_bytes
 	b.Content = blockbytes
@@ -337,6 +337,8 @@ func (block *Block) VerifyCoinbase() bool{
  func (block *Block) PreProcessAccountBalance(accounts [] *Account) ([]*Account, []*Account){
 		var changedAccounts []*Account
 		var newAccounts [] *Account
+		
+		idx := int64(len(accounts)) + 1
 
 		for _, v := range block.Transactions{
 			account_from := FindAccount(accounts, v.From)
@@ -344,7 +346,8 @@ func (block *Block) VerifyCoinbase() bool{
 				if v.From == ""{
 					// 创世交易
 					if account_to == nil{
-						account_to = InitAccount(v.To)
+						account_to = InitAccount(v.To, idx)
+						idx ++
 						account_to.Nonce += 1
 						accounts = append(accounts, account_to)
 						newAccounts = append(newAccounts, account_to)
@@ -354,7 +357,8 @@ func (block *Block) VerifyCoinbase() bool{
 						_log.Panic(v.From, ": no this account")
 					}
 					if account_to == nil{
-						account_to = InitAccount(v.To)
+						account_to = InitAccount(v.To, idx)
+						idx ++
 						account_from.Nonce += 1
 						account_to.Nonce += 1
 						account_to.Balance += v.Amount
@@ -388,13 +392,12 @@ func (block *Block) VerifyCoinbase() bool{
 		if coinbase_account == nil{
 			coinbase_account = FindAccount(newAccounts, block.Header.Coinbase)
 			if coinbase_account == nil{
-				coinbase_account = InitAccount(block.Header.Coinbase)
+				coinbase_account = InitAccount(block.Header.Coinbase, idx)
 				newAccounts = append(newAccounts, coinbase_account)
 			}
 		}
 		coinbase_account.Balance += Subsidy
-		// coinbase_account.Nonce += 1
-
+		
 		return changedAccounts, newAccounts
  }
 

@@ -164,73 +164,14 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 		log.Panic("no transaction can be mine")
 	}
 
-	// flag := make(chan struct{})
-
 	provework := bc.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
 
 		bc.AcceptNewBlock(block, st)
-		// scbutils.Update(func(tx *bolt.Tx) error {
-		// 	b := tx.Bucket([]byte(blocksBucket))
-		// 	err := b.Put(block.Header.Hash, block.Serialize())
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-	
-		// 	err = b.Put([]byte("l"), block.Header.Hash)
-		// 	if err != nil {
-		// 		log.Panic(err)
-		// 	}
-		// 	bc.tip = block.Header.Hash
-	
-		// 	return nil
-		// })
-		
-		// // ChangeBalance(block.Header.Coinbase, Subsidy, true)
-
-		// //save transaction block map 
-		// for _, trans := range transactions{
-		// 	scbutils.Update(func(tx *bolt.Tx) error {
-		// 		b := tx.Bucket([]byte(transactionMapBucket))
-		// 		// buf := make([]byte, binary.MaxVarintLen64)
-		// 		// len := binary.PutVarint(buf, block.Header.Height)
-		// 		// buf = buf[0:len]
-		// 		err := b.Put(trans.ID, block.Header.Hash)
-		// 		if err != nil {
-		// 			log.Panic(err)
-		// 		}
-		// 		return nil
-		// 	})
-		// }
-
-		// for _, v := range transactions{
-		// 	scbutils.Update(func(tx *bolt.Tx) error {
-		// 		b := tx.Bucket([]byte(transactionBucket))
-		// 		err := b.Delete(v.ID)
-		// 		return err
-		// 	})
-		// }
-
-		// for _, v := range transactions{
-		// 	if v.Coinbase{
-		// 		ChangeBalance(v.From, v.Amount, false)
-		// 		ChangeBalance(v.From, 0 - v.Amount, true)
-		// 	}else{
-		// 		ChangeBalance(v.From, 0 - v.Amount, false)
-		// 		ChangeBalance(v.To, v.Amount, false)
-		// 	}
-		// }
-
-		//for test
-		// bc.AcceptNewBlock(block)
-
-
-		// flag <- struct{}{}
 		if callback != nil {
 			callback(transactions)
 
 		}
 	})
-	// <- flag
 
 	return provework
 }
