@@ -91,6 +91,7 @@ func DeleteBlockchain() error {
 
 // load Blockchain from db
 func LoadBlockchain() *Blockchain {
+	RegisterSCBTypes()
 	if dbExists() == false {
 		fmt.Println("no existing blockchain, create one.")
 		os.Exit(1)
