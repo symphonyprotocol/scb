@@ -111,6 +111,7 @@ func GetMaxUnpackNonce(transactions []* Transaction) int64{
 }
 
 func SendTo(from, to string, amount int64, wif string) *Transaction {
+
 	_, validFrom := elliptic.LoadAddress(from)
 	_, validTo := elliptic.LoadAddress(to)
 	prikey, _ := elliptic.LoadWIF(wif)
@@ -154,6 +155,8 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 	var transactions []* Transaction
 
 	unpacktransactions := bc.FindAllUnpackTransaction()
+
+
 	if len(unpacktransactions) > 0{
 		for key := range unpacktransactions{
 			transactions = unpacktransactions[key]

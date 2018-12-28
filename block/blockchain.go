@@ -192,7 +192,16 @@ func(bc *Blockchain) SaveTransaction(trans *Transaction){
 		if err != nil {
 			log.Panic(err)
 		}
-
+		return nil
+	})
+}
+func(bc *Blockchain) DeleteTransaction(trans *Transaction){
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(transactionBucket))
+		err := b.Delete(trans.ID)
+		if err != nil {
+			log.Panic(err)
+		}
 		return nil
 	})
 }
@@ -321,9 +330,16 @@ func (bc *Blockchain) GetBlockByHash(hash []byte) *Block {
 func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block, *MerkleTree)) *ProofOfWork {
 	var lastHash []byte
 	var lastHeight int64
-	for _, tx := range transactions{
-		if !tx.Verify(){
-			log.Panic("ERROR: Invalid transaction")
+	for _, trans := range transactions{
+		if !trans.Verify(){
+			// utils.Update
+			utils.Update(func(tx *bolt.Tx) error {
+				bucket := tx.Bucket([]byte(transactionBucket))
+				bucket.Delete(trans.ID)
+				return nil
+			})
+
+			log.Panic("ERROR: Invalid transaction, delete it")
 		}
 	}
 
@@ -386,7 +402,6 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	}else{
 		blockchain = bc
 	}
-
 	//无冲突
 	if existBlock := bc.GetBlock(block.Header.Height); existBlock == nil{
 		blockchain.verifyNewBlock(block)
@@ -441,11 +456,39 @@ func postAcceptBlock(block *Block, st *MerkleTree){
 	utils.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(stateTreeBucket))
 		if bucket != nil{
+			del_indx := block.Header.Height - 5
 			bucket.Put([]byte (height_str), st.BreadthFirstSerialize())
+			if del_indx > 0{
+				bucket.Delete([]byte(strconv.FormatInt(del_indx, 10)))
+			}
 		}
 		return nil
 	})
 	
+	//save transaction
+	for _, trans := range block.Transactions{
+		utils.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(transactionMapBucket))
+			err := b.Put(trans.ID, block.Header.Hash)
+			if err != nil {
+				log.Panic(err)
+			}
+			return nil
+		})
+	}
+
+	//delete packed transaction
+	for _, trans := range block.Transactions{
+		utils.Update(func(tx *bolt.Tx) error {
+			b := tx.Bucket([]byte(transactionBucket))
+			err := b.Delete(trans.ID)
+			if err != nil {
+				// log.Panic(err)
+				fmt.Printf("an error when delete:%v", err.Error)
+			}
+			return nil
+		})
+	}
 
 
 		// // reward miner

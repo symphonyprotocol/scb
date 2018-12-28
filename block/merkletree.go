@@ -38,6 +38,7 @@ type Node struct {
 type NodeShadow struct{
 	Leaf bool
 	Dup bool
+	Virtual bool
 	Hash [] byte
 	C Content
 }
@@ -476,6 +477,7 @@ func(m *MerkleTree)BreadthFirstSerialize() []byte {
 			Leaf: node.leaf,
 			Dup: node.dup,
 			Hash: node.Hash,
+			Virtual: node.virtual,
 			C: node.C,
 		}
 
@@ -526,16 +528,16 @@ func DeserializeNodeFromData(d []byte) *MerkleTree {
 	data = data[1:]
 
 	var node *Node
-	var parent *Node
+	// var parent *Node
 	var leafs [] *Node
 
     for len(data) > 0 && len(queue) > 0 {
-		parent = node
+		// parent = node
         node = queue[0]
         queue = queue[1:]
 
 		// 父节点
-		node.Parent = parent
+		// node.Parent = parent
 
 		// 左侧节点
 		left := newNodeFromData(data[0])
@@ -581,6 +583,7 @@ func newNodeFromData(data [] byte) *Node {
 			dup: ns.Dup,
 			Hash: ns.Hash,
 			C: ns.C,
+			virtual: ns.Virtual,
 		}
 		return node
 }
@@ -611,17 +614,21 @@ func(m *MerkleTree) UpdateTree(changedAccounts []*Account, newAccounts []*Accoun
 			Dup: false,
 		}, paths)
 	}
+	m.merkleRoot = m.Root.Hash
 
-	var res_tree *MerkleTree
-	for _, account := range newAccounts{
-		account_bytes := account.Serialize()
-
-		res_tree = m.InsertContent(
-			BlockContent{
-				X : account_bytes,
-				Dup: false,
-			})
+	if len(newAccounts) > 0{
+		var res_tree *MerkleTree
+		for _, account := range newAccounts{
+			account_bytes := account.Serialize()
+	
+			res_tree = m.InsertContent(
+				BlockContent{
+					X : account_bytes,
+					Dup: false,
+				})
+		}
+		return res_tree, nil
 	}
-	return res_tree, nil
+	return m, nil
 }
 
