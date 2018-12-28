@@ -11,6 +11,7 @@ func RegisterSCBTypes() {
 		gob.Register(Transaction{})
 		gob.Register(&NodeShadow{})
 		gob.Register(BlockContent{})
+		typesRegistered = true
 	}
 }
 
