@@ -1,6 +1,7 @@
 package block
 import "bytes"
 import "encoding/gob"
+import "encoding/binary"
 import "log"
 import "github.com/boltdb/bolt"
 import "fmt"
@@ -16,9 +17,13 @@ type Account struct{
 	Index int64
 }
 
+type AccountIncreaseMent struct{
+	ChangedAccount [] *Account
+	NewAccount [] *Account
+}
 
-// Serializes the account
-func (a *Account) Serialize() []byte {
+// Serializes the account increasement
+func (a *AccountIncreaseMent) Serialize() []byte {
 	var result bytes.Buffer
 	encoder := gob.NewEncoder(&result)
 
@@ -29,53 +34,59 @@ func (a *Account) Serialize() []byte {
 	return result.Bytes()
 }
 
+// Deserializes account increasement
+func DeserializeAccountIncreasement(d []byte) *AccountIncreaseMent {
+	var account AccountIncreaseMent
+
+	decoder := gob.NewDecoder(bytes.NewReader(d))
+	err := decoder.Decode(&account)
+	if err != nil {
+		log.Panic(err)
+	}
+	return &account
+}
 
 
-
-// func ChangeBalance(address string, balance int64){
-// 	// initaccount := InitAccount(address)
-
-// 	utils.Update(func(tx *bolt.Tx) error {
-// 			bucket := tx.Bucket([]byte(accountBucket))
-// 			accountbytes := bucket.Get([]byte(address))
-
-// 			// var newaccount *Account
-// 			var account *Account
+// Serializes the account
+func (a *Account) Serialize() []byte {
+	b1 := [] byte(a.Address)
+	b2 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b2, uint64(a.Balance))
+	b3 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b3, uint64(a.Index))
+	b4 := make([]byte, 8)
+	binary.LittleEndian.PutUint64(b4, uint64(a.Nonce))
 	
-// 			if accountbytes == nil{
-// 				account = initaccount
-// 			}else{
-// 				account = DeserializeAccount(accountbytes)
-// 			}
+	var bytes []byte
+	bytes = append(b1, b2...)
+	bytes = append(bytes, b3...)
+	bytes = append(bytes, b4...)
 
-// 			account.Balance += balance
-	
-// 			if account.Balance < 0 {
-// 				log.Panic("no enough amount")
-// 			}
-	
-// 			if accountbytes == nil{
-// 				bucket.Put([]byte(address), account.Serialize())
-// 			}else{
-// 				bucket.Delete([]byte(address))
-// 				bucket.Put([]byte(address), account.Serialize())
-// 			}
-// 			return nil
-// 		})
-// }
+	return bytes
+}
 
-func NoncePlus(address string){
-	utils.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(accountBucket))
-		accountbytes := bucket.Get([]byte(address))
-		if accountbytes != nil{
-			account := DeserializeAccount(accountbytes)
-			account.Nonce += 1
-			bucket.Delete([]byte(address))
-			bucket.Put([]byte(address), account.Serialize())
-		}
-		return nil
-	})
+// Deserializes a Account
+func DeserializeAccount(d []byte) *Account {
+	var account Account
+	b_addr := d[:33]
+	d = d[33:]
+	b_ba := d[:8]
+	d = d[8:]
+	b_idx:= d[:8]
+	d= d[8:]
+	b_non:= d[:8]
+
+	balance := int64(binary.LittleEndian.Uint64(b_ba))
+	index := int64(binary.LittleEndian.Uint64(b_idx))
+	nonce := int64(binary.LittleEndian.Uint64(b_non))
+
+	account.Address = string(b_addr)
+	account.Balance = balance
+	account.Index = index
+	account.Nonce = nonce
+	
+
+	return &account
 }
 
 func GetBalance(address string) (int64){
@@ -99,20 +110,6 @@ func GetAccount(address string) *Account{
 		return nil
 	})
 	return account
-}
-
-
-// Deserializes a Account
-func DeserializeAccount(d []byte) *Account {
-	var account Account
-
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&account)
-	if err != nil {
-		log.Panic(err)
-	}
-
-	return &account
 }
 
 
@@ -172,7 +169,6 @@ func GetAllAccount() []*Account {
 	// })
 	return accounts
 }
-
 
 func FindAccount(accounts []*Account , address string) *Account{
 	for _, account := range accounts{
