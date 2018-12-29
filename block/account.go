@@ -180,25 +180,6 @@ func GetAllAccount() []*Account {
 	return accounts
 }
 
-func GetAllAccountTest() []*Account {
-	var accounts [] *Account
-
-	utils.ViewTest(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(accountBucket))
-		if b == nil{
-			return nil
-		}
-		c := b.Cursor()
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			// fmt.Printf("key=%s, value=%s\n", k, v)
-			account := DeserializeAccount(v)
-			accounts = append(accounts, account)
-		}
-		return nil
-	})
-	return accounts
-}
-
 
 func FindAccount(accounts []*Account , address string) *Account{
 	for _, account := range accounts{
