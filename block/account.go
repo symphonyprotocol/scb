@@ -49,6 +49,8 @@ func DeserializeAccountIncreasement(d []byte) *AccountIncreaseMent {
 
 // Serializes the account
 func (a *Account) Serialize() []byte {
+	var b0 []byte
+
 	b1 := [] byte(a.Address)
 	b2 := make([]byte, 8)
 	binary.LittleEndian.PutUint64(b2, uint64(a.Balance))
@@ -58,7 +60,13 @@ func (a *Account) Serialize() []byte {
 	binary.LittleEndian.PutUint64(b4, uint64(a.Nonce))
 	
 	var bytes []byte
-	bytes = append(b1, b2...)
+	var len_addr byte
+	len_addr = byte(len(b1))
+
+	b0 = append(b0, len_addr)
+
+	bytes = append(b0, b1...)
+	bytes = append(bytes, b2...)
 	bytes = append(bytes, b3...)
 	bytes = append(bytes, b4...)
 
@@ -68,8 +76,10 @@ func (a *Account) Serialize() []byte {
 // Deserializes a Account
 func DeserializeAccount(d []byte) *Account {
 	var account Account
-	b_addr := d[:33]
-	d = d[33:]
+	len := d[0]
+
+	b_addr := d[1:len+1]
+	d = d[len+1:]
 	b_ba := d[:8]
 	d = d[8:]
 	b_idx:= d[:8]
@@ -169,6 +179,26 @@ func GetAllAccount() []*Account {
 	// })
 	return accounts
 }
+
+func GetAllAccountTest() []*Account {
+	var accounts [] *Account
+
+	utils.ViewTest(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(accountBucket))
+		if b == nil{
+			return nil
+		}
+		c := b.Cursor()
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// fmt.Printf("key=%s, value=%s\n", k, v)
+			account := DeserializeAccount(v)
+			accounts = append(accounts, account)
+		}
+		return nil
+	})
+	return accounts
+}
+
 
 func FindAccount(accounts []*Account , address string) *Account{
 	for _, account := range accounts{
