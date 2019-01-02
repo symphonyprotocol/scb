@@ -19,7 +19,7 @@ import "github.com/boltdb/bolt"
 const targetBits = 8
 
 var maxNonce = int64(math.MaxInt64)
-var blockLogger = log.GetLogger("scb")
+var blockLogger = log.GetLogger("scb").SetLevel(log.INFO)
 
 type BlockHeader struct{
 	Timestamp      int64
@@ -72,7 +72,7 @@ func DeserializeBlock(d []byte) *Block {
 	decoder := gob.NewDecoder(bytes.NewReader(d))
 	err := decoder.Decode(&block)
 	if err != nil {
-		blockLogger.Error("Failed to deserialize the block: %v", err)
+		blockLogger.Trace("Failed to deserialize the block: %v", err)
 		return nil
 	}
 
@@ -147,7 +147,11 @@ func (pow *ProofOfWork) Run(callback func(int64, []byte))  {
 			case <- pow.quitSign:
 				break QUIT
 			default:
-				data := pow.prepareData(nonce, true)
+				data, err := pow.prepareData(nonce, true)
+
+				if err != nil {
+					continue
+				}
 		
 				hash = sha256.Sum256(data)
 				fmt.Printf("%d->%x\n", nonce, hash)
@@ -225,7 +229,15 @@ func GetLastMerkleTree() *MerkleTree{
 	return tree
 }
 
-func (pow *ProofOfWork) prepareData(nonce int64, preprocess bool) []byte {
+func (pow *ProofOfWork) prepareData(nonce int64, preprocess bool) (retBytes []byte, retErr interface{}) {
+	// to avoid method call conflict with AcceptNewBlock.
+	// TODO: need optimization
+	defer func() {
+		if err := recover(); err != nil {
+			retBytes = nil
+			retErr = err
+		}
+	}()
 	data := bytes.Join(
 		[][]byte{
 			pow.block.Header.PrevBlockHash,
@@ -238,7 +250,7 @@ func (pow *ProofOfWork) prepareData(nonce int64, preprocess bool) []byte {
 		[]byte{},
 	)
 
-	return data
+	return data, nil
 }
 
 
