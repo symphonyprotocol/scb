@@ -10,7 +10,7 @@ go build -o scb
 
 ### create blockchain
 ```
-scb createblockchain -address 1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y -wif L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5
+scb createblockchain -wif L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5
 ```
 
 ###  get balance 
@@ -28,5 +28,11 @@ pywL8LjxA2rjzbL7qvFqjgbNVQ5
 ### mine
 
 ```
-./scb mine -address 1T3r9yFFM6St9wGSp7zMYP24G6pUYnL7y
+./scb mine -wif L5fR7FRHnZGL3DjsrhN8CvBYHpywL8LjxA2rjzbL7qvFqjgbNVQ5
+```
+
+## printchain
+
+```
+./scb printchain
 ```
