@@ -15,13 +15,15 @@ import (
 )
 
 const blocksBucket = "blocks"
+const blocksIndexBucket = "blocks_indexes"
+const blocksIndex_heightPrefix = "h"
 const accountBucket = "account"
 const transactionBucket = "transaction_pool"
 const transactionMapBucket = "transaction"
 const stateTreeBucket = "statetree"
 const accountCacheBucket = "account_cache"
 // 挖矿奖励金
-const Subsidy = 100
+const Subsidy = 1000000000
 
 var(
 	CURRENT_USER, _ = osuser.Current()
@@ -127,6 +129,11 @@ func CreateEmptyBlockchain() *Blockchain {
 		}
 
 		_, err = tx.CreateBucket([]byte(blocksBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blocksIndexBucket))
 		if err != nil {
 			log.Panic(err)
 		}
@@ -326,6 +333,18 @@ func (bc *Blockchain) GetBlockByHash(hash []byte) *Block {
 	return the_block
 }
 
+func (bc *Blockchain) GetBlockByHeight(height int64) *Block {
+	var blockHash []byte
+	if dbExists() {
+		utils.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(blocksIndexBucket))
+			blockHash = bucket.Get(getHeightKeyForHash(height))
+			return nil
+		})
+	}
+
+	return bc.GetBlockByHash(blockHash)
+}
 
 // MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block, *MerkleTree)) *ProofOfWork {
@@ -404,7 +423,7 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 		blockchain = bc
 	}
 	//无冲突
-	if existBlock := bc.GetBlock(block.Header.Height); existBlock == nil{
+	if existBlock := bc.GetBlockByHash(block.Header.Hash); existBlock == nil{
 		blockchain.verifyNewBlock(block)
 		
 		//2. verify block hash
@@ -550,6 +569,12 @@ func (bc *Blockchain) CombineBlock(block *Block){
 			log.Panic(err)
 		}
 		bc.tip = block.Header.Hash
+
+		b = tx.Bucket([]byte(blocksIndexBucket))
+		err = b.Put(getHeightKeyForHash(block.Header.Height), block.Header.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
 		// fmt.Print(block.Header.Hash)
 		return nil
 	})
@@ -604,6 +629,10 @@ func (bc *Blockchain) HasBlock(hash []byte) *Block {
 	return block
 }
 
+func getHeightKeyForHash(height int64) []byte {
+	return []byte(fmt.Sprintf("%v%v", blocksIndex_heightPrefix, height))
+}
+
 // revert block chain to specific height
 func RevertTo(Height int64){
 	chain := LoadBlockchain()
@@ -618,6 +647,8 @@ func RevertTo(Height int64){
 			utils.Update(func(tx *bolt.Tx) error {
 				bucket := tx.Bucket([]byte(blocksBucket))
 				bucket.Delete(b.Header.Hash)
+				bucket = tx.Bucket([]byte(blocksIndexBucket))
+				bucket.Delete(getHeightKeyForHash(b.Header.Height))
 				return nil
 			})
 			// remove reward miner
