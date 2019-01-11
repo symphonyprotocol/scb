@@ -16,10 +16,10 @@ import _log "log"
 import "strconv"
 import "github.com/boltdb/bolt"
 
-const targetBits = 8
+const targetBits = 6
 
 var maxNonce = int64(math.MaxInt64)
-var blockLogger = log.GetLogger("scb").SetLevel(log.INFO)
+var blockLogger = log.GetLogger("scb").SetLevel(log.TRACE)
 
 type BlockHeader struct{
 	Timestamp      int64
@@ -84,7 +84,10 @@ func (b *Block) HashTransactions() []byte {
 	// var transactions [][]byte
 	var transactions []Content
 	for _, tx := range b.Transactions {
-		transactions = append(transactions, BlockContent{X : tx.Serialize()})
+		//fmt.Printf("the tx inside when verifying pow: %v", tx)
+		serializedTx := tx.Serialize()
+		//fmt.Printf("serialized tx when verifying pow: %v", serializedTx)
+		transactions = append(transactions, BlockContent{X : serializedTx})
 	}
 
 	mTree, err := NewTree(transactions)
