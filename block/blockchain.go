@@ -338,7 +338,9 @@ func (bc *Blockchain) GetBlockByHeight(height int64) *Block {
 	if dbExists() {
 		utils.View(func(tx *bolt.Tx) error {
 			bucket := tx.Bucket([]byte(blocksIndexBucket))
-			blockHash = bucket.Get(getHeightKeyForHash(height))
+			the_bytes := bucket.Get(getHeightKeyForHash(height))
+			blockHash = make([]byte, len(the_bytes))
+			copy(blockHash, the_bytes)
 			return nil
 		})
 	}
