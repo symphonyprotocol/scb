@@ -21,46 +21,46 @@ func (t BlockContent) CalculateHash() ([]byte, error) {
 }
   
 //Equals tests for equality of two Contents
-func (t BlockContent) Equals(other Content) (bool, error) {
-	return bytes.Compare(t.X, other.(BlockContent).X) == 0, nil
+func (t BlockContent) Equals(other BlockContent) (bool, error) {
+	return bytes.Compare(t.X, other.X) == 0, nil
 }
 
 func (t BlockContent) IsDup() (bool, error) {
 	return t.Dup, nil
 }
 
-func (t BlockContent) SetDup(dup bool) Content{
+func (t BlockContent) SetDup(dup bool) BlockContent{
 	t.Dup = dup
 	return t
 }
 
 
-//TestContent implements the Content interface provided by merkletree and represents the content stored in the tree.
-type TestContent struct {
-	X string
-	Dup bool
-}
+// //TestContent implements the Content interface provided by merkletree and represents the content stored in the tree.
+// type TestContent struct {
+// 	X string
+// 	Dup bool
+// }
   
-//CalculateHash hashes the values of a TestContent
-func (t TestContent) CalculateHash() ([]byte, error) {
-		h := sha256.New()
-		if _, err := h.Write([]byte(t.X)); err != nil {
-			return nil, err
-		}
+// //CalculateHash hashes the values of a TestContent
+// func (t TestContent) CalculateHash() ([]byte, error) {
+// 		h := sha256.New()
+// 		if _, err := h.Write([]byte(t.X)); err != nil {
+// 			return nil, err
+// 		}
   
-		return h.Sum(nil), nil
-}
-//Equals tests for equality of two Contents
-func (t TestContent) Equals(other Content) (bool, error) {
-		return t.X == other.(TestContent).X, nil
-}
+// 		return h.Sum(nil), nil
+// }
+// //Equals tests for equality of two Contents
+// func (t TestContent) Equals(other Content) (bool, error) {
+// 		return t.X == other.(TestContent).X, nil
+// }
 
-func (t TestContent) IsDup() (bool, error) {
-	return t.Dup, nil
-}
+// func (t TestContent) IsDup() (bool, error) {
+// 	return t.Dup, nil
+// }
 
-func (t TestContent) SetDup(dup bool) Content{
-	t.Dup = dup
-	return t
-}
+// func (t TestContent) SetDup(dup bool) Content{
+// 	t.Dup = dup
+// 	return t
+// }
 

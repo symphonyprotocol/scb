@@ -15,13 +15,19 @@ import (
 )
 
 const blocksBucket = "blocks"
+const blockPendingBucket = "block_pending"
+const blockHeightHashMapBucket = "block_hash_map"
+const blockPendingSingleBucket = "block_pending_single"
 const accountBucket = "account"
 const transactionBucket = "transaction_pool"
 const transactionMapBucket = "transaction"
 const stateTreeBucket = "statetree"
 const accountCacheBucket = "account_cache"
+const pendingBlockCnt = 5
+const maxSinglePendingBlockCnt = 100
 // 挖矿奖励金
 const Subsidy = 100
+
 
 var(
 	CURRENT_USER, _ = osuser.Current()
@@ -32,10 +38,6 @@ type Blockchain struct {
 	tip []byte
 	// db  *bolt.DB
 }
-
-// func  (bc *Blockchain) GetDB() *bolt.DB{
-// 	return bc.db
-// }
 
 
 // BlockchainIterator is used to iterate over blockchain blocks
@@ -71,6 +73,7 @@ func (i *BlockchainIterator) Next() *Block {
 	i.currentHash = block.Header.PrevBlockHash
 	return block
 }
+
 
 func dbExists() bool {
 	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
@@ -110,7 +113,6 @@ func LoadBlockchain() *Blockchain {
 	bc := Blockchain{tip}
 	return &bc
 }
-
 // new empty blockchain, just the db initialized.
 func CreateEmptyBlockchain() *Blockchain {
 	if dbExists() {
@@ -127,6 +129,16 @@ func CreateEmptyBlockchain() *Blockchain {
 		}
 
 		_, err = tx.CreateBucket([]byte(blocksBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blockPendingBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blockPendingSingleBucket))
 		if err != nil {
 			log.Panic(err)
 		}
@@ -168,11 +180,10 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
 	address := publickey.ToAddressCompressed()
 	fmt.Printf("address from wif %v\n", address)
-	account := InitAccount(address, 0)
 
 	// var tip []byte
 
-	trans := NewTransaction(account.Nonce, Subsidy, "", address)
+	trans := NewTransaction(0, Subsidy, "", address)
 	trans = trans.Sign(privateKey)
 
 	bc := CreateEmptyBlockchain()
@@ -196,6 +207,7 @@ func(bc *Blockchain) SaveTransaction(trans *Transaction){
 		return nil
 	})
 }
+
 func(bc *Blockchain) DeleteTransaction(trans *Transaction){
 	utils.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(transactionBucket))
@@ -248,47 +260,45 @@ func(bc *Blockchain) FindUnpackTransaction(address string) []* Transaction{
 	return transactions
 }
 
-func (bc *Blockchain) FindAllUnpackTransaction() map[string] []* Transaction {
-	var trans_map map[string] []* Transaction
-	trans_map = make(map[string] []* Transaction)
-
-	utils.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(transactionBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			// fmt.Printf("key=%s, value=%s\n", k, v)
-			trans := DeserializeTransction(v)
-			trans_s, ok := trans_map [trans.From]
-			if ok{
-				trans_s = append(trans_s, trans)
-				trans_map[trans.From] = trans_s
-			}else{
-				trans_map[trans.From] = []* Transaction{trans}
-			}
-		}
-		return nil
-	})
-	return trans_map
-}
-
 
 func GetBlockHeight() int64{
-	var lastBlock Block
+	// var lastBlock Block
+	var height int64 = -1
 	if dbExists(){
 		utils.View(func(tx *bolt.Tx) error{
 			bucket := tx.Bucket([]byte(blocksBucket))
 			blockhash := bucket.Get([]byte ("l"))
 			blockdata := bucket.Get(blockhash)
 			if len(blockdata) > 0{
-				lastBlock = *DeserializeBlock(blockdata)
+				lastBlock := *DeserializeBlock(blockdata)
+				height = lastBlock.Header.Height
+			}else{
+				height = -1
 			}
 			return nil
 		})
 	}else{
 		return 0
 	}
-	return lastBlock.Header.Height
+	return height
+}
+
+func GetLastBlock() *Block{
+	var lastBlock *Block
+	if dbExists(){
+		utils.View(func(tx *bolt.Tx) error{
+			bucket := tx.Bucket([]byte(blocksBucket))
+			blockhash := bucket.Get([]byte ("l"))
+			blockdata := bucket.Get(blockhash)
+			if len(blockdata) > 0{
+				lastBlock = DeserializeBlock(blockdata)
+			}
+			return nil
+		})
+	}else{
+		return nil
+	}
+	return lastBlock
 }
 
 func(bc *Blockchain) GetBlock(height int64) *Block{
@@ -372,7 +382,10 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	//1. verify block POW
 	fmt.Println("//1. verify block POW")
-	if pow_res := block.VerifyPow(true); !pow_res{
+
+	tree := GetLastMerkleTree()
+	pow_res := block.VerifyPowV2(tree);
+	if !pow_res{
 		log.Panic("block pow verify fail")
 	}
 	//2. verfiy transactions
@@ -429,6 +442,16 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	}
 }
 
+func(bc *Blockchain) AcceptNewPendingChain(chain *BlockChainPending){
+	blocks := chain.ConvertPendingBlockchain2Blocks()
+	
+	for idx := len(blocks) - 1 ; idx >0 ; idx--{
+		bc.AcceptNewBlock(blocks[idx], nil)
+	}
+	// need clear pending pool
+}
+
+
 func postAcceptBlock(block *Block, st *MerkleTree){
 	accounts := GetAllAccount()
 	change_accounts, new_accounts := block.PreProcessAccountBalance(accounts)
@@ -454,6 +477,7 @@ func postAcceptBlock(block *Block, st *MerkleTree){
 
 	//save state tree
 	height_str := strconv.FormatInt(block.Header.Height, 10)
+	
 	utils.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(stateTreeBucket))
 		if bucket != nil{
@@ -470,7 +494,7 @@ func postAcceptBlock(block *Block, st *MerkleTree){
 	for _, trans := range block.Transactions{
 		utils.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte(transactionMapBucket))
-			err := b.Put(trans.ID, block.Header.Hash)
+			err := b.Put(trans.ID, trans.Serialize())
 			if err != nil {
 				log.Panic(err)
 			}
@@ -666,7 +690,6 @@ func RevertTo(Height int64){
 	}
 }
 
-
 func PrintChain() {
 	bc := LoadBlockchain()
 	bci := bc.Iterator()
@@ -675,14 +698,20 @@ func PrintChain() {
 		b := bci.Next()
 
 		fmt.Printf("Previous hash: %x\n", b.Header.PrevBlockHash)
-		fmt.Printf("Hash: %x\n", b.Header.Hash)
+		fmt.Printf("Hash: %v\n", b.Header.Hash)
 		fmt.Printf("CreateAt: %v\n", b.Header.Timestamp)
 		fmt.Printf("Height:%d\n", b.Header.Height)
 		fmt.Printf("Coinbase:%v\n", b.Header.Coinbase)
 		fmt.Printf("merkle Root:%v\n", b.Header.MerkleRootHash)
 		fmt.Printf("account state Root:%v\n", b.Header.MerkleRootAccountHash)
-		// pow := NewProofOfWork(b)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPow(false)))
+
+		var lastStateTree *MerkleTree
+		lastHeight := b.Header.Height - 1
+		if lastHeight >= 0{
+			lastStateTree = GetMerkleTreeByHeight(lastHeight)
+		}
+		
+		fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPowV2(lastStateTree)))
 		fmt.Printf("Signature Verify:%v \n", b.VerifyCoinbase())
 		fmt.Println()
 
