@@ -18,6 +18,8 @@ const blocksBucket = "blocks"
 const blockPendingBucket = "block_pending"
 const blockHeightHashMapBucket = "block_hash_map"
 const blockPendingSingleBucket = "block_pending_single"
+const blocksIndexBucket = "blocks_indexes"
+const blocksIndex_heightPrefix = "h"
 const accountBucket = "account"
 const transactionBucket = "transaction_pool"
 const transactionMapBucket = "transaction"
@@ -26,7 +28,7 @@ const accountCacheBucket = "account_cache"
 const pendingBlockCnt = 5
 const maxSinglePendingBlockCnt = 100
 // 挖矿奖励金
-const Subsidy = 100
+const Subsidy = 1000000000
 
 
 var(
@@ -139,6 +141,11 @@ func CreateEmptyBlockchain() *Blockchain {
 		}
 
 		_, err = tx.CreateBucket([]byte(blockPendingSingleBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blocksIndexBucket))
 		if err != nil {
 			log.Panic(err)
 		}
@@ -336,6 +343,20 @@ func (bc *Blockchain) GetBlockByHash(hash []byte) *Block {
 	return the_block
 }
 
+func (bc *Blockchain) GetBlockByHeight(height int64) *Block {
+	var blockHash []byte
+	if dbExists() {
+		utils.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(blocksIndexBucket))
+			the_bytes := bucket.Get(getHeightKeyForHash(height))
+			blockHash = make([]byte, len(the_bytes))
+			copy(blockHash, the_bytes)
+			return nil
+		})
+	}
+
+	return bc.GetBlockByHash(blockHash)
+}
 
 // MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block, *MerkleTree)) *ProofOfWork {
@@ -380,6 +401,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 }
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
+	blockLogger.Trace("verifying block: %v, %v", block.Header.Height, block.Header.HashString())
 	//1. verify block POW
 	fmt.Println("//1. verify block POW")
 
@@ -389,19 +411,19 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 		log.Panic("block pow verify fail")
 	}
 	//2. verfiy transactions
-	fmt.Println("//2. verfiy transactions")
+	blockLogger.Trace("//2. verfiy transactions")
 	if trans_res := block.VerifyTransaction(); !trans_res{
 		log.Panic("block transaction verify fail")
 	}
 
 	//3. verify block signature
-	fmt.Println("//3. verify block signature")
+	blockLogger.Trace("//3. verify block signature")
 	if coinbase_res := block.VerifyCoinbase(); !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
 
 	//4. verify block merkle root hash
-	fmt.Println("//4. verify block merkle root hash")
+	blockLogger.Trace("//4. verify block merkle root hash")
 	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
 		log.Panic("merkle root hash verify fail")
 	}
@@ -409,6 +431,7 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 
 
 func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
+	blockLogger.Trace("accepting new block")
 	var blockchain *Blockchain
 
 	if len(bc.tip) != 0 {
@@ -416,17 +439,22 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	}else{
 		blockchain = bc
 	}
+	blockLogger.Trace("blockchain loaded")
 	//无冲突
-	if existBlock := bc.GetBlock(block.Header.Height); existBlock == nil{
+	if existBlock := bc.GetBlockByHash(block.Header.Hash); existBlock == nil{
 		blockchain.verifyNewBlock(block)
+		blockLogger.Trace("block verified")
 		
 		//2. verify block hash
 		if block_hash_res := bc.VerifyBlockHash(block);!block_hash_res{
 			log.Panic("block hash fail")
 		}
+		blockLogger.Trace("block hash verified")
 
 		blockchain.CombineBlock(block)
+		blockLogger.Trace("block combined")
 		postAcceptBlock(block, st)
+		blockLogger.Trace("post accept block done")
 
 	}else{
 		fmt.Println("block already exists, check timestamp")
@@ -454,26 +482,31 @@ func(bc *Blockchain) AcceptNewPendingChain(chain *BlockChainPending){
 
 func postAcceptBlock(block *Block, st *MerkleTree){
 	accounts := GetAllAccount()
+	blockLogger.Trace("all account loaded")
 	change_accounts, new_accounts := block.PreProcessAccountBalance(accounts)
+	blockLogger.Trace("account balance preprocessed")
 	
-	for _, v := range change_accounts{
-		utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(accountBucket))
+	utils.Update(func(tx *bolt.Tx) error {
+			
+		bucket := tx.Bucket([]byte(accountBucket))
+		for _, v := range change_accounts{
 			accountbytes := bucket.Get([]byte(v.Address))
 			if accountbytes != nil{
 				bucket.Delete([]byte(v.Address))
 				bucket.Put([]byte(v.Address), v.Serialize())
 			}
-			return nil
-		})
-	}
-	for _, v := range new_accounts{
-		utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(accountBucket))
+		}
+		return nil
+	})
+	blockLogger.Trace("account changes saved")
+	utils.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(accountBucket))
+		for _, v := range new_accounts{
 			bucket.Put([]byte(v.Address), v.Serialize())
-			return nil
-		})
-	}
+		}
+		return nil
+	})
+	blockLogger.Trace("new accounts saved")
 
 	//save state tree
 	height_str := strconv.FormatInt(block.Header.Height, 10)
@@ -489,31 +522,34 @@ func postAcceptBlock(block *Block, st *MerkleTree){
 		}
 		return nil
 	})
+	blockLogger.Trace("state tree saved")
 	
 	//save transaction
-	for _, trans := range block.Transactions{
-		utils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(transactionMapBucket))
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(transactionMapBucket))
+		for _, trans := range block.Transactions{
 			err := b.Put(trans.ID, trans.Serialize())
 			if err != nil {
 				log.Panic(err)
 			}
-			return nil
-		})
-	}
+		}
+		return nil
+	})
+	blockLogger.Trace("txs saved")
 
 	//delete packed transaction
-	for _, trans := range block.Transactions{
-		utils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(transactionBucket))
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(transactionBucket))
+		for _, trans := range block.Transactions{
 			err := b.Delete(trans.ID)
 			if err != nil {
 				// log.Panic(err)
 				fmt.Printf("an error when delete:%v", err.Error)
 			}
-			return nil
-		})
-	}
+		}
+		return nil
+	})
+	blockLogger.Trace("packed txs deleted")
 
 
 		// // reward miner
@@ -574,6 +610,12 @@ func (bc *Blockchain) CombineBlock(block *Block){
 			log.Panic(err)
 		}
 		bc.tip = block.Header.Hash
+
+		b = tx.Bucket([]byte(blocksIndexBucket))
+		err = b.Put(getHeightKeyForHash(block.Header.Height), block.Header.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
 		// fmt.Print(block.Header.Hash)
 		return nil
 	})
@@ -628,6 +670,10 @@ func (bc *Blockchain) HasBlock(hash []byte) *Block {
 	return block
 }
 
+func getHeightKeyForHash(height int64) []byte {
+	return []byte(fmt.Sprintf("%v%v", blocksIndex_heightPrefix, height))
+}
+
 // revert block chain to specific height
 func RevertTo(Height int64){
 	chain := LoadBlockchain()
@@ -642,6 +688,8 @@ func RevertTo(Height int64){
 			utils.Update(func(tx *bolt.Tx) error {
 				bucket := tx.Bucket([]byte(blocksBucket))
 				bucket.Delete(b.Header.Hash)
+				bucket = tx.Bucket([]byte(blocksIndexBucket))
+				bucket.Delete(getHeightKeyForHash(b.Header.Height))
 				return nil
 			})
 			// remove reward miner
