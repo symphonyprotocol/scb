@@ -585,3 +585,61 @@ func (block *Block) VerifyCoinbase() bool{
 		
 		return changedAccounts, newAccounts
  }
+
+ func (block *Block) SaveTransactions(){
+	//save transaction
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(transactionMapBucket))
+		for _, trans := range block.Transactions{
+			err := b.Put(trans.ID, trans.Serialize())
+			if err != nil {
+				fmt.Printf("an error when save:%s", err.Error())
+			}
+		}
+		return nil
+	})
+	blockLogger.Trace("txs saved")
+ }
+
+ func (block *Block) DeleteTransactions(){
+	//delete packed transaction
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(transactionBucket))
+		for _, trans := range block.Transactions{
+			err := b.Delete(trans.ID)
+			if err != nil {
+				fmt.Printf("an error when delete:%s", err.Error())
+			}
+		}
+		return nil
+	})
+ }
+
+ func(block *Block) SaveAccounts(){
+	accounts := GetAllAccount()
+	blockLogger.Trace("all account loaded")
+	change_accounts, new_accounts := block.PreProcessAccountBalance(accounts)
+	blockLogger.Trace("account balance preprocessed")
+	
+	utils.Update(func(tx *bolt.Tx) error {
+			
+		bucket := tx.Bucket([]byte(accountBucket))
+		for _, v := range change_accounts{
+			accountbytes := bucket.Get([]byte(v.Address))
+			if accountbytes != nil{
+				bucket.Delete([]byte(v.Address))
+				bucket.Put([]byte(v.Address), v.Serialize())
+			}
+		}
+		return nil
+	})
+	blockLogger.Trace("account changes saved")
+	utils.Update(func(tx *bolt.Tx) error {
+		bucket := tx.Bucket([]byte(accountBucket))
+		for _, v := range new_accounts{
+			bucket.Put([]byte(v.Address), v.Serialize())
+		}
+		return nil
+	})
+	blockLogger.Trace("new accounts saved")
+ }

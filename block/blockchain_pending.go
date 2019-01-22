@@ -29,25 +29,137 @@ type BlockchainPendingPool struct{
 }
 
 
-func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
-	var pendlingLength byte
-	var blockchainPending *BlockChainPending
+func GetPendingBlock(blockHash []byte) *Block{
+	var block *Block
+	utils.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blockPendingBucket))
+		bytesBlock := b.Get(blockHash)
+		if nil != bytesBlock{
+			block = DeserializeBlock(bytesBlock)
+		}
+		return nil
+	})
+	return block
+}
+func GetSinglePendingBlock(blockHash []byte) *Block{
+	var block *Block
+	utils.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blockPendingSingleBucket))
+		bytesBlock := b.Get(blockHash)
+		if nil != bytesBlock{
+			block = DeserializeBlock(bytesBlock)
+		}
+		return nil
+	})
+	return block
+}
+
+func SavePendingBlock(block *Block){
+	utils.Update(func(tx *bolt.Tx) error {
+		bs := tx.Bucket([]byte(blockPendingBucket))
+		bs.Put(block.Header.Hash, block.Serialize())
+		return nil
+	})
+}
+func SaveSinglePendingBlock(block *Block){
+	utils.Update(func(tx *bolt.Tx) error {
+		bs := tx.Bucket([]byte(blockPendingSingleBucket))
+		bs.Put(block.Header.PrevBlockHash, block.Serialize())
+		return nil
+	})
+}
+
+func(bcp *BlockchainPendingPool) SavePendingBlockDetails(block *Block) (byte, []byte, *Block){
+	var pendingLength byte
 	var blocktailHash []byte
+	var rootBlock *Block
+
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blockPendingBucket))
+		var flagHash []byte = block.Header.Hash
+
+		for bytes.Compare(flagHash, bcp.Root) != 0{
+			pendingLength += 1
+			if bytes.Compare(flagHash, block.Header.Hash) == 0{
+				flagHash = block.Header.PrevBlockHash
+				continue
+			}
+			blockbytes := b.Get(flagHash)
+			prevBlock := DeserializeBlock(blockbytes)
+			flagHash = prevBlock.Header.PrevBlockHash
+			if bytes.Compare(flagHash, bcp.Root) == 0{
+				rootBlock = prevBlock
+			}
+		}
+
+		keyTail0 := append([]byte("lt"), rootBlock.Header.Hash...)
+		keyTail := append(keyTail0, block.Header.Hash...)
+		keyHeight := append([]byte("height"), block.Header.Hash...)
+
+		prevTail := append(keyTail0, block.Header.PrevBlockHash...)
+		b.Delete(prevTail)
+		blocktailHash = block.Header.Hash
+		b.Put(keyTail, block.Header.Hash)
+		var heightval []byte
+		heightval = append(heightval, byte(pendingLength))
+		b.Put(keyHeight, heightval)
+		return nil
+	})
+
+	return pendingLength, blocktailHash, rootBlock
+}
+
+func(bcp *BlockchainPendingPool) ConnectSinglePendingPool(block *Block, rootBlock *Block, pendlingLength byte, blocktailHash []byte)(byte, []byte){
+
+	if pendlingLength < pendingBlockCnt{
+		singleBlock := GetSinglePendingBlock(block.Header.Hash)
+		
+		for nil != singleBlock{
+			pendlingLength += 1
+			prevBlock := GetPendingBlock(singleBlock.Header.PrevBlockHash)
+			//verify pow
+			stateTree := bcp.DerivationPendingTree(prevBlock)
+			if pow_res := singleBlock.VerifyPowV2(stateTree); !pow_res{
+				log.Panic("block pow verify fail")
+			}
+
+			SavePendingBlock(singleBlock)
+
+			// update tail pointer
+			prev_tail_key := append([]byte("lt"), rootBlock.Header.Hash...)
+			prev_tail_key = append(prev_tail_key, prevBlock.Header.Hash...)
+			current_tail_key := append(prev_tail_key, singleBlock.Header.Hash...)
+			blocktailHash = current_tail_key
+			
+			utils.Update(func(tx *bolt.Tx) error {
+				b := tx.Bucket([]byte(blockPendingBucket))
+				bs := tx.Bucket([]byte(blockPendingSingleBucket))
+				b.Delete(prev_tail_key)
+				b.Put(current_tail_key, singleBlock.Header.Hash)
+				bs.Delete(singleBlock.Header.PrevBlockHash)
+				return nil
+			})
+			singleBlock = GetSinglePendingBlock(singleBlock.Header.Hash)
+		}
+	}
+	return pendlingLength, blocktailHash
+}
+
+
+func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
+	var blockchainPending *BlockChainPending
 
 	verifyAcceptBlock(block)
 
 	//can connect root hash
 	if bytes.Compare(block.Header.PrevBlockHash, bcp.Root) == 0{
-
 		if pow_res := block.VerifyPowV2(bcp.RootStateTree); !pow_res{
 			log.Panic("block pow verify fail")
 		}
-		
 		var height []byte 
 		utils.Update(func(tx *bolt.Tx) error {
 			b := tx.Bucket([]byte(blockPendingBucket))
 			val := b.Get(block.Header.Hash)
-
 			if nil == val{
 				var keyHead []byte
 				var keyTail []byte
@@ -66,99 +178,27 @@ func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
 			return nil
 		})
 	}else{
-		utils.Update(func(tx *bolt.Tx) error {
+		prevBlock := GetPendingBlock(block.Header.PrevBlockHash)
+		if prevBlock == nil{
+			SaveSinglePendingBlock(block)
+		}else{
+			stateTree := bcp.DerivationPendingTree(prevBlock)
+			if pow_res := block.VerifyPowV2(stateTree); !pow_res{
+				log.Panic("block pow verify fail")
+			}
+			SavePendingBlock(block)
+			pendingLength, blocktailHash, rootBlock := bcp.SavePendingBlockDetails(block)
+			pendingLength, blocktailHash = bcp.ConnectSinglePendingPool(block, rootBlock, pendingLength, blocktailHash)
 
-			b := tx.Bucket([]byte(blockPendingBucket))
-			bs := tx.Bucket([]byte(blockPendingSingleBucket))
-
-			bytesPrevious := b.Get(block.Header.PrevBlockHash)
-			if nil == bytesPrevious{
-				//single block, put into single block pool
-				bs.Put(block.Header.PrevBlockHash, block.Serialize())
-			}else{
-				//can connect with previous pending block
-				block_serialize := block.Serialize()
-
-				//verify pow
-				blockPrevious := DeserializeBlock(bytesPrevious)
-				stateTree := bcp.DerivationPendingTree(blockPrevious)
-				if pow_res := block.VerifyPowV2(stateTree); !pow_res{
-					log.Panic("block pow verify fail")
-				}
-
-				b.Put(block.Header.Hash, block_serialize)
-
-				var flagHash []byte = block.Header.Hash
-				var rootBlock *Block
-
-				for bytes.Compare(flagHash, bcp.Root) != 0{
-					pendlingLength += 1
-					blockbytes := b.Get(flagHash)
-					prevBlock := DeserializeBlock(blockbytes)
-					flagHash = prevBlock.Header.PrevBlockHash
-					if bytes.Compare(flagHash, bcp.Root) == 0{
-						rootBlock = prevBlock
-					}
-				}
-
-
-				keyTail0 := append([]byte("lt"), rootBlock.Header.Hash...)
-				keyTail := append(keyTail0, block.Header.Hash...)
-				keyHeight := append([]byte("height"), block.Header.Hash...)
-
-				prevTail := append(keyTail0, block.Header.PrevBlockHash...)
-				b.Delete(prevTail)
-				blocktailHash = block.Header.Hash
-				b.Put(keyTail, block.Header.Hash)
-				var heightval []byte
-				heightval = append(heightval, byte(pendlingLength))
-				b.Put(keyHeight, heightval)
-
-
-				// check if can connect from single block pending pool 
-				if pendlingLength < pendingBlockCnt{
-					singleBytes:= bs.Get(block.Header.Hash)
-
-					for singleBytes != nil{
-						pendlingLength += 1
-						singleBlock := DeserializeBlock(singleBytes)
-						privBytes := b.Get(singleBlock.Header.PrevBlockHash)
-						prevBlock := DeserializeBlock(privBytes)
-
-						//verify pow
-						stateTree := bcp.DerivationPendingTree(prevBlock)
-						if pow_res := singleBlock.VerifyPowV2(stateTree); !pow_res{
-							log.Panic("block pow verify fail")
-						}
-
-						// append to pending blockchain
-						b.Put(singleBlock.Header.Hash, singleBlock.Serialize())
-
-						// update tail pointer
-						prev_tail_key := append([]byte("lt"), rootBlock.Header.Hash...)
-						prev_tail_key = append(prev_tail_key, prevBlock.Header.Hash...)
-						current_tail_key := append(prev_tail_key, singleBlock.Header.Hash...)
-
-						blocktailHash = current_tail_key
-
-						b.Delete(prev_tail_key)
-						b.Put(current_tail_key, singleBlock.Header.Hash)
-
-						bs.Delete(singleBlock.Header.PrevBlockHash)
-						singleBytes = bs.Get(singleBlock.Header.Hash)
-					}
-				}
-				if pendlingLength >= pendingBlockCnt{
-					blockchainPending = &BlockChainPending{
-						Head: rootBlock.Header.Hash,
-						Tail: &BlockChainPendingTail{
-							ltail: blocktailHash,
-						},
-					}
+			if pendingLength >= pendingBlockCnt{
+				blockchainPending = &BlockChainPending{
+					Head: rootBlock.Header.Hash,
+					Tail: &BlockChainPendingTail{
+						ltail: blocktailHash,
+					},
 				}
 			}
-			return nil
-		})
+		}
 	}
 	return blockchainPending
 }

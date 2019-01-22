@@ -171,7 +171,13 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 	}
 
 	provework := bcp.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
-		bcp.AcceptBlock(block)
+		pendingblockChain := bcp.AcceptBlock(block)
+		if pendingblockChain != nil{
+			bc := LoadBlockchain()
+			bc.AcceptNewPendingChain(pendingblockChain)
+		}
+		block.DeleteTransactions()
+		callback(transactions)
 	})
 
 	return provework
