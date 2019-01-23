@@ -153,6 +153,7 @@ func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
 
 	//can connect root hash
 	if bytes.Compare(block.Header.PrevBlockHash, bcp.Root) == 0{
+		fmt.Printf("can be connected to main chain, root tree hash: %v\n", bcp.RootStateTree.Root.Hash)
 		if pow_res := block.VerifyPowV2(bcp.RootStateTree); !pow_res{
 			log.Panic("block pow verify fail")
 		}
@@ -179,10 +180,13 @@ func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
 		})
 	}else{
 		prevBlock := GetPendingBlock(block.Header.PrevBlockHash)
+		fmt.Printf("can not be connected to main chain, root tree hash: %v\n", bcp.RootStateTree.Root.Hash)
+		fmt.Printf("prev block hash: %v\n", prevBlock.Header.HashString())
 		if prevBlock == nil{
 			SaveSinglePendingBlock(block)
 		}else{
 			stateTree := bcp.DerivationPendingTree(prevBlock)
+			fmt.Printf("derived state tree hash: %v\n", stateTree.Root.Hash)
 			if pow_res := block.VerifyPowV2(stateTree); !pow_res{
 				log.Panic("block pow verify fail")
 			}
@@ -383,13 +387,20 @@ func (bcp *BlockchainPendingPool) DerivationPendingTree(block *Block) *MerkleTre
 	treebytes := bcp.RootStateTree.BreadthFirstSerialize()
 	copyTree := DeserializeNodeFromData(treebytes)
 
+	fmt.Printf("copied tree root hash: %v\n", copyTree.Root.Hash)
+
 	if block == nil{
 		return copyTree
 	}
 	
 	stateTree := copyTree
 	accounts := stateTree.DeserializeAccount()
+	for _, acc := range accounts {
+		fmt.Printf("account : %v\n", acc)
+	}
 	chain := bcp.GetBlockPendingChains(block)
+
+	fmt.Printf("longChain head: %v, tail: %v\n", chain.Head, chain.Tail)
 
 	if chain != nil{
 		blocks := chain.ConvertPendingBlockchain2Blocks()
