@@ -152,7 +152,7 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 	return trans
 }
 
-func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
+func Mine(wif string, callback func(*Block)) *ProofOfWork {
 	// bc := LoadBlockchain()
 
 	bcp := LoadPendingPool()
@@ -172,6 +172,9 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 
 	provework := bcp.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
 		bcp.AcceptBlock(block)
+		if callback != nil {
+			callback(block)
+		}
 	})
 
 	return provework
