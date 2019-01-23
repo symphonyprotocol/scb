@@ -473,41 +473,21 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 func(bc *Blockchain) AcceptNewPendingChain(chain *BlockChainPending){
 	blocks := chain.ConvertPendingBlockchain2Blocks()
 	
-	for idx := len(blocks) - 1 ; idx >0 ; idx--{
-		bc.AcceptNewBlock(blocks[idx], nil)
+	for idx := len(blocks)-1 ; idx>=0 ; idx--{
+		block := blocks[idx]
+		accounts := GetAllAccount()
+		lastTree := GetLastMerkleTree()
+		changed, new := block.PreProcessAccountBalance(accounts)
+		tree, err := lastTree.UpdateTree(changed, new)
+		if err == nil{
+			bc.AcceptNewBlock(blocks[idx], tree)
+		}
 	}
-	// need clear pending pool
 }
 
 
 func postAcceptBlock(block *Block, st *MerkleTree){
-	accounts := GetAllAccount()
-	blockLogger.Trace("all account loaded")
-	change_accounts, new_accounts := block.PreProcessAccountBalance(accounts)
-	blockLogger.Trace("account balance preprocessed")
-	
-	utils.Update(func(tx *bolt.Tx) error {
-			
-		bucket := tx.Bucket([]byte(accountBucket))
-		for _, v := range change_accounts{
-			accountbytes := bucket.Get([]byte(v.Address))
-			if accountbytes != nil{
-				bucket.Delete([]byte(v.Address))
-				bucket.Put([]byte(v.Address), v.Serialize())
-			}
-		}
-		return nil
-	})
-	blockLogger.Trace("account changes saved")
-	utils.Update(func(tx *bolt.Tx) error {
-		bucket := tx.Bucket([]byte(accountBucket))
-		for _, v := range new_accounts{
-			bucket.Put([]byte(v.Address), v.Serialize())
-		}
-		return nil
-	})
-	blockLogger.Trace("new accounts saved")
-
+	block.SaveAccounts()
 	//save state tree
 	height_str := strconv.FormatInt(block.Header.Height, 10)
 	
@@ -524,77 +504,8 @@ func postAcceptBlock(block *Block, st *MerkleTree){
 	})
 	blockLogger.Trace("state tree saved")
 	
-	//save transaction
-	utils.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(transactionMapBucket))
-		for _, trans := range block.Transactions{
-			err := b.Put(trans.ID, trans.Serialize())
-			if err != nil {
-				log.Panic(err)
-			}
-		}
-		return nil
-	})
-	blockLogger.Trace("txs saved")
-
-	//delete packed transaction
-	utils.Update(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(transactionBucket))
-		for _, trans := range block.Transactions{
-			err := b.Delete(trans.ID)
-			if err != nil {
-				// log.Panic(err)
-				fmt.Printf("an error when delete:%v", err.Error)
-			}
-		}
-		return nil
-	})
-	blockLogger.Trace("packed txs deleted")
-
-
-		// // reward miner
-		// if block.Header.Height > 0{
-		// 	// ChangeBalance(block.Header.Coinbase, Subsidy)
-		// }
-		
-		// //save transaction
-		// for _, trans := range block.Transactions{
-		// 	utils.Update(func(tx *bolt.Tx) error {
-		// 		b := tx.Bucket([]byte(transactionMapBucket))
-		// 		err := b.Put(trans.ID, block.Header.Hash)
-		// 		if err != nil {
-		// 			log.Panic(err)
-		// 		}
-		// 		return nil
-		// 	})
-		// }
-
-		// //delete packed transaction
-		// for _, trans := range block.Transactions{
-		// 	utils.Update(func(tx *bolt.Tx) error {
-		// 		b := tx.Bucket([]byte(transactionBucket))
-		// 		err := b.Delete(trans.ID)
-		// 		if err != nil {
-		// 			// log.Panic(err)
-		// 			fmt.Printf("an error when delete:%v", err.Error)
-		// 		}
-		// 		return nil
-		// 	})
-		// }
-		
-		// //change balance
-		// for _, v := range block.Transactions{
-		// 	if v.From == ""{
-		// 		// 创世交易
-		// 		// ChangeBalance(v.To, v.Amount)
-		// 		// NoncePlus(v.To)
-		// 	}else{
-		// 		// ChangeBalance(v.From, 0 - v.Amount)
-		// 		// ChangeBalance(v.To, v.Amount)
-		// 		// NoncePlus(v.From)
-		// 	}
-		// }
-
+	block.SaveTransactions()
+	block.DeleteTransactions()
 }
 
 func (bc *Blockchain) CombineBlock(block *Block){
@@ -758,8 +669,11 @@ func PrintChain() {
 		if lastHeight >= 0{
 			lastStateTree = GetMerkleTreeByHeight(lastHeight)
 		}
-		
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPowV2(lastStateTree)))
+		if lastStateTree == nil{
+			fmt.Print("PoW can not be verified , because no state tree can be loaded\n")
+		}else{
+			fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPowV2(lastStateTree)))
+		}
 		fmt.Printf("Signature Verify:%v \n", b.VerifyCoinbase())
 		fmt.Println()
 
