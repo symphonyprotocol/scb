@@ -195,11 +195,13 @@ func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
 					Head: rootBlock.Header.Hash,
 					Tail: &BlockChainPendingTail{
 						ltail: blocktailHash,
+						height: pendingLength,
 					},
 				}
 			}
 		}
 	}
+	
 	return blockchainPending
 }
 

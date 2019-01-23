@@ -449,6 +449,7 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 		if block_hash_res := bc.VerifyBlockHash(block);!block_hash_res{
 			log.Panic("block hash fail")
 		}
+
 		blockLogger.Trace("block hash verified")
 
 		blockchain.CombineBlock(block)
@@ -560,10 +561,10 @@ func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
 	
 	hashCompRes := bytes.Compare(b.Header.PrevBlockHash, lastHash)
 
-	hashVerify := b.VerifyHash()
+	// hashVerify := b.VerifyHash()
 
 	fmt.Printf("last height: %v, header height:%v\n", lastHeight, b.Header.Height)
-	if hashCompRes == 0 && hashVerify && lastHeight + 1 == b.Header.Height{
+	if hashCompRes == 0 && lastHeight + 1 == b.Header.Height{
 		return true
 	}
 	return false
