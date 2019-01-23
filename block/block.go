@@ -68,8 +68,11 @@ func (b *Block) Serialize() []byte {
 // Deserializes a block
 func DeserializeBlock(d []byte) *Block {
 	var block Block = Block{}
-	sutils.BytesToObj(d, &block)
-	return &block
+	if err := sutils.BytesToObj(d, &block); err != nil {
+		return nil
+	} else {
+		return &block
+	}
 	// decoder := gob.NewDecoder(bytes.NewReader(d))
 	// err := decoder.Decode(&block)
 	// if err != nil {
