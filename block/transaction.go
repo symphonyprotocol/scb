@@ -152,7 +152,7 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 	return trans
 }
 
-func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
+func Mine(wif string, callback func(*Block)) *ProofOfWork {
 	// bc := LoadBlockchain()
 
 	bcp := LoadPendingPool()
@@ -178,9 +178,7 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 		}
 		block.DeleteTransactions()
 		ClearPendingPool()
-		callback(transactions)
-
-
+		callback(block)
 	})
 
 	return provework
