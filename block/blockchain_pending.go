@@ -393,3 +393,13 @@ func (bcp *BlockchainPendingPool) DerivationPendingTree(block *Block) *MerkleTre
 	}
 	return stateTree
 }
+
+func ClearPendingPool(){
+	utils.Update(func(tx *bolt.Tx) error {
+		tx.DeleteBucket([]byte(blockPendingBucket))
+		tx.DeleteBucket([]byte(blockPendingSingleBucket))
+		tx.CreateBucketIfNotExists([]byte(blockPendingBucket))
+		tx.CreateBucketIfNotExists([]byte(blockPendingSingleBucket))
+		return nil
+	})
+}
