@@ -177,7 +177,6 @@ func Mine(wif string, callback func(*Block)) *ProofOfWork {
 			bc.AcceptNewPendingChain(pendingblockChain)
 		}
 		block.DeleteTransactions()
-		ClearPendingPool()
 		callback(block)
 	})
 

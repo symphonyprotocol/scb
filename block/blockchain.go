@@ -483,6 +483,7 @@ func(bc *Blockchain) AcceptNewPendingChain(chain *BlockChainPending){
 			bc.AcceptNewBlock(blocks[idx], tree)
 		}
 	}
+	ClearPendingPool()
 }
 
 
