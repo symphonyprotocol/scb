@@ -368,6 +368,17 @@ func (bcp *BlockchainPendingPool) GetLongChain() *BlockChainPending{
 	return longestChain
 }
 
+func (bcp *BlockchainPendingPool) GetBlockPendingChains(block *Block) *BlockChainPending{
+	var chain *BlockChainPending
+
+	for _, c := range bcp.PendingChains{
+		if bytes.Compare(chain.Tail.ltail, block.Header.PrevBlockHash) == 0{
+			chain = c
+		}
+	}
+	return chain
+}
+
 func (bcp *BlockchainPendingPool) DerivationPendingTree(block *Block) *MerkleTree{
 	treebytes := bcp.RootStateTree.BreadthFirstSerialize()
 	copyTree := DeserializeNodeFromData(treebytes)
@@ -378,10 +389,10 @@ func (bcp *BlockchainPendingPool) DerivationPendingTree(block *Block) *MerkleTre
 	
 	stateTree := copyTree
 	accounts := stateTree.DeserializeAccount()
-	longChain := bcp.GetLongChain()
+	chain := bcp.GetBlockPendingChains(block)
 
-	if longChain != nil{
-		blocks := longChain.ConvertPendingBlockchain2Blocks()
+	if chain != nil{
+		blocks := chain.ConvertPendingBlockchain2Blocks()
 
 		for idx := len(blocks)-1 ; idx >= 0 ; idx-- {
 			block_ := blocks[idx]
