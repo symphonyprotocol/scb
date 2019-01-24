@@ -167,7 +167,8 @@ func Mine(wif string, callback func(*Block)) *ProofOfWork {
 		}
 
 	}else{
-		log.Panic("no transaction can be mine")
+		// log.Panic("no transaction can be mine")
+		return nil
 	}
 
 	provework := bcp.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
