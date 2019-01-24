@@ -71,27 +71,26 @@ func SaveSinglePendingBlock(block *Block){
 
 func (bcp *BlockchainPendingPool) FindRootBlock(block *Block)(byte, *Block){
 	var rootBlock *Block
-	var pendingLength byte
+	var pendingLength byte = 1
 
 	utils.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blockPendingBucket))
-		var flagHash []byte = block.Header.Hash
-
-		for bytes.Compare(flagHash, bcp.Root) != 0{
+		var flagHash []byte = block.Header.PrevBlockHash
+		for {
 			pendingLength += 1
-			if bytes.Compare(flagHash, block.Header.Hash) == 0{
-				flagHash = block.Header.PrevBlockHash
-				continue
-			}
 			blockbytes := b.Get(flagHash)
 			prevBlock := DeserializeBlock(blockbytes)
 			flagHash = prevBlock.Header.PrevBlockHash
 			if bytes.Compare(flagHash, bcp.Root) == 0{
 				rootBlock = prevBlock
+				break
 			}
 		}
 		return nil
 	})
+	if rootBlock == nil{
+		pendingLength = 0
+	}
 	return pendingLength, rootBlock
 }
 
