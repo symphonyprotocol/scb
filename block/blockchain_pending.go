@@ -69,10 +69,9 @@ func SaveSinglePendingBlock(block *Block){
 	})
 }
 
-func(bcp *BlockchainPendingPool) SavePendingBlockDetails(block *Block) (byte, []byte, *Block){
-	var pendingLength byte
-	var blocktailHash []byte
+func (bcp *BlockchainPendingPool) FindRootBlock(block *Block)(byte, *Block){
 	var rootBlock *Block
+	var pendingLength byte
 
 	utils.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blockPendingBucket))
@@ -91,7 +90,20 @@ func(bcp *BlockchainPendingPool) SavePendingBlockDetails(block *Block) (byte, []
 				rootBlock = prevBlock
 			}
 		}
+		return nil
+	})
+	return pendingLength, rootBlock
+}
 
+func(bcp *BlockchainPendingPool) SavePendingBlockDetails(block *Block) (byte, []byte, *Block){
+	var pendingLength byte
+	var blocktailHash []byte
+	var rootBlock *Block
+
+	pendingLength, rootBlock = bcp.FindRootBlock(block)
+
+	utils.Update(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(blockPendingBucket))
 		keyTail0 := append([]byte("lt"), rootBlock.Header.Hash...)
 		keyTail := append(keyTail0, block.Header.Hash...)
 		keyHeight := append([]byte("height"), block.Header.Hash...)
@@ -185,12 +197,15 @@ func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
 		if prevBlock == nil{
 			SaveSinglePendingBlock(block)
 		}else{
+
 			stateTree := bcp.DerivationPendingTree(prevBlock)
 			fmt.Printf("derived state tree hash: %v\n", stateTree.Root.Hash)
 			if pow_res := block.VerifyPowV2(stateTree); !pow_res{
 				log.Panic("block pow verify fail")
 			}
+
 			SavePendingBlock(block)
+
 			pendingLength, blocktailHash, rootBlock := bcp.SavePendingBlockDetails(block)
 			pendingLength, blocktailHash = bcp.ConnectSinglePendingPool(block, rootBlock, pendingLength, blocktailHash)
 
@@ -398,22 +413,28 @@ func (bcp *BlockchainPendingPool) DerivationPendingTree(block *Block) *MerkleTre
 		fmt.Printf("account : %v\n", acc)
 	}
 	chain := bcp.GetBlockPendingChains(block)
-
-	fmt.Printf("longChain head: %v, tail: %v\n", chain.Head, chain.Tail)
-
-	if chain != nil{
-		blocks := chain.ConvertPendingBlockchain2Blocks()
-
-		for idx := len(blocks)-1 ; idx >= 0 ; idx-- {
-			block_ := blocks[idx]
-			change_accounts, new_accounts := block_.PreProcessAccountBalance(accounts)
-			stateTree, _ = stateTree.UpdateTree(change_accounts, new_accounts)
-			accounts = stateTree.DeserializeAccount()
-			if bytes.Compare(block.Header.Hash, block_.Header.Hash) ==0 {
-				break
-			}
+	if chain == nil{
+		length, rootBlock := bcp.FindRootBlock(block)
+		chain = &BlockChainPending{
+			Head: rootBlock.Header.Hash,
+			Tail: &BlockChainPendingTail{
+				ltail: block.Header.Hash,
+				height: length,
+			},
 		}
 	}
+
+	blocks := chain.ConvertPendingBlockchain2Blocks()
+	for idx := len(blocks)-1 ; idx >= 0 ; idx-- {
+		block_ := blocks[idx]
+		change_accounts, new_accounts := block_.PreProcessAccountBalance(accounts)
+		stateTree, _ = stateTree.UpdateTree(change_accounts, new_accounts)
+		accounts = stateTree.DeserializeAccount()
+		if bytes.Compare(block.Header.Hash, block_.Header.Hash) ==0 {
+			break
+		}
+	}
+
 	return stateTree
 }
 
