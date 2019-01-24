@@ -394,7 +394,6 @@ func (pow *ProofOfWork) prepareDatav2(merkleRoot []byte , nonce int64) (retBytes
 		},
 		[]byte{},
 	)
-
 	return data, nil
 }
 
@@ -421,6 +420,7 @@ func (block *Block) prepareDataV2(merkleRoot []byte) []byte{
 			block.HashTransactions(),
 			merkleRoot,
 			utils.IntToHex(block.Header.Timestamp),
+			// utils.IntToHex(block.Header.Difficulty),
 			utils.IntToHex(int64(targetBits)),
 			utils.IntToHex(block.Header.Nonce),
 		},

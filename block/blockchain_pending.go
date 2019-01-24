@@ -373,14 +373,13 @@ func (bcp *BlockchainPendingPool) GetLongChain() *BlockChainPending{
 }
 
 func (bcp *BlockchainPendingPool) GetBlockPendingChains(block *Block) *BlockChainPending{
-	var chain *BlockChainPending
 
-	for _, c := range bcp.PendingChains{
-		if bytes.Compare(chain.Tail.ltail, block.Header.PrevBlockHash) == 0{
-			chain = c
+	for _, chain := range bcp.PendingChains{
+		if bytes.Compare(chain.Tail.ltail, block.Header.Hash) == 0{
+			return chain
 		}
 	}
-	return chain
+	return nil
 }
 
 func (bcp *BlockchainPendingPool) DerivationPendingTree(block *Block) *MerkleTree{
