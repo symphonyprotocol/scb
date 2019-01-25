@@ -48,6 +48,8 @@ type ProofOfWork struct {
 	target *big.Int
 	quitSign	chan struct{}
 	isFinished	bool
+	Cancelled	chan struct{}
+	Done 		chan []byte
 }
 
 
@@ -137,7 +139,7 @@ func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
 	target.Lsh(target, uint(256-targetBits))
 
-	pow := &ProofOfWork{b, target, make(chan struct{}), false}
+	pow := &ProofOfWork{b, target, make(chan struct{}), false, make(chan struct{}), make(chan []byte)}
 
 	return pow
 }
@@ -197,6 +199,7 @@ func (pow *ProofOfWork) Runv2(merkleRoot []byte,callback func(int64, []byte))  {
 			select {
 			case <- pow.quitSign:
 				break QUIT
+				pow.Cancelled <- struct{}{}
 			default:
 				data, err := pow.prepareDatav2(merkleRoot, nonce)
 				if err != nil {
@@ -204,16 +207,17 @@ func (pow *ProofOfWork) Runv2(merkleRoot []byte,callback func(int64, []byte))  {
 				}
 		
 				hash = sha256.Sum256(data)
-				fmt.Printf("%d->%x\n", nonce, hash)
+				// fmt.Printf("%d->%x\n", nonce, hash)
 				hashInt.SetBytes(hash[:])
 		
 				if hashInt.Cmp(pow.target) == -1 {
 					// found
-					fmt.Printf("find:%x\n", hash)
+					fmt.Printf("Mine: Found: %d->%x\n", nonce, hash)
 					if callback != nil {
 						pow.isFinished = true
 						callback(nonce, hash[:])
 					}
+					pow.Done <- hash[:]
 					break QUIT
 				} else {
 					nonce++

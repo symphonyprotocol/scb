@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"github.com/symphonyprotocol/scb/utils"
+	sutils "github.com/symphonyprotocol/sutil/utils"
 	// "encoding/binary"
 	"strconv"
 )
@@ -401,7 +402,7 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 }
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
-	blockLogger.Trace("verifying block: %v, %v", block.Header.Height, block.Header.HashString())
+	blockLogger.Trace("verifying block: %v, %v, prev: %v", block.Header.Height, block.Header.HashString(), sutils.BytesToString(block.Header.PrevBlockHash))
 	//1. verify block POW
 	blockLogger.Trace("//1. verify block POW")
 
@@ -443,6 +444,7 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	blockLogger.Trace("blockchain loaded")
 	//无冲突
 	if existBlock := bc.GetBlockByHash(block.Header.Hash); existBlock == nil{
+		blockLogger.Trace("no conflict")
 		blockchain.verifyNewBlock(block)
 		blockLogger.Trace("block verified")
 		
@@ -459,7 +461,7 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 		blockLogger.Trace("post accept block done")
 
 	}else{
-		fmt.Println("block already exists, check timestamp")
+		blockLogger.Trace("block already exists, check timestamp")
 		if block.Header.Timestamp >= existBlock.Header.Timestamp{
 			fmt.Errorf("block exist and this block is later then exist one")
 		}else{

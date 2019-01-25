@@ -215,10 +215,10 @@ func (bcp *BlockchainPendingPool) AcceptBlock(block *Block) *BlockChainPending{
 	}else{
 		prevBlock := GetPendingBlock(block.Header.PrevBlockHash)
 		fmt.Printf("can not be connected to main chain, root tree hash: %v\n", bcp.RootStateTree.Root.Hash)
-		fmt.Printf("prev block hash: %v\n", prevBlock.Header.HashString())
 		if prevBlock == nil{
 			SaveSinglePendingBlock(block)
 		}else{
+			fmt.Printf("prev block hash: %v\n", prevBlock.Header.HashString())
 
 			stateTree := bcp.DerivationPendingTree(prevBlock)
 			fmt.Printf("derived state tree hash: %v\n", stateTree.Root.Hash)

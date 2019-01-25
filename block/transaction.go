@@ -12,7 +12,6 @@ import (
 	// "encoding/binary"
 )
 
-
 // Transaction represents a Bitcoin transaction
 type Transaction struct {
 	ID        []byte
@@ -152,9 +151,8 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 	return trans
 }
 
-func Mine(wif string, callback func(*Block)) *ProofOfWork {
+func Mine(wif string, callback func(*Block), processedSign func()) *ProofOfWork {
 	// bc := LoadBlockchain()
-
 	bcp := LoadPendingPool()
 	var transactions []* Transaction
 	unpacktransactions := FindAllUnpackTransaction()
@@ -172,13 +170,20 @@ func Mine(wif string, callback func(*Block)) *ProofOfWork {
 	}
 
 	provework := bcp.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
+		if callback != nil {
+			callback(block)
+		}
 		pendingblockChain := bcp.AcceptBlock(block)
 		if pendingblockChain != nil{
 			bc := LoadBlockchain()
 			bc.AcceptNewPendingChain(pendingblockChain)
 		}
 		block.DeleteTransactions()
-		callback(block)
+		blockLogger.Trace("Tx cleared")
+
+		if processedSign != nil {
+			processedSign()
+		}
 	})
 
 	return provework
