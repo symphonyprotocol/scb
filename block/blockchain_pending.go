@@ -71,20 +71,43 @@ func SaveSinglePendingBlock(block *Block){
 
 func (bcp *BlockchainPendingPool) FindRootBlock(block *Block)(byte, *Block){
 	var rootBlock *Block
-	var pendingLength byte = 1
+	var pendingLength byte = 0
+	fmt.Printf("--- Finding root block with block: %v\n", block.Header.HashString())
 
 	utils.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(blockPendingBucket))
 		var flagHash []byte = block.Header.PrevBlockHash
+		fmt.Printf("--- flagHash init as: %v\n", ut.BytesToString(flagHash))
+		var prevBlock *Block
 		for {
 			pendingLength += 1
 			blockbytes := b.Get(flagHash)
-			prevBlock := DeserializeBlock(blockbytes)
-			flagHash = prevBlock.Header.PrevBlockHash
+			currentBlock := DeserializeBlock(blockbytes)
+			if currentBlock != nil {
+				fmt.Printf("--- hash of current block: %v\n", currentBlock.Header.HashString())
+			} else {
+				fmt.Println("--- current block is nil --- ")
+			}
+			fmt.Printf("--- hash of flaghash: %v\n", ut.BytesToString(flagHash))
+			fmt.Printf("--- hash of bcp.Root: %v\n", ut.BytesToString(bcp.Root))
 			if bytes.Compare(flagHash, bcp.Root) == 0{
-				rootBlock = prevBlock
+				fmt.Printf("--- EQUALS: prevBlock: %v\n", prevBlock)
+				if prevBlock == nil && currentBlock != nil {
+					fmt.Printf("--- EQUALS: prevBlock is nil, use currentBlock\n")
+					rootBlock = currentBlock
+				}
+				if prevBlock == nil && currentBlock == nil {
+					fmt.Printf("--- EQUALS: the partial chain has only one block, it's itself\n")
+					rootBlock = block
+				}
+				if prevBlock != nil {
+					fmt.Printf("--- EQUALS: use prevBlock\n")
+					rootBlock = prevBlock
+				}
 				break
 			}
+			prevBlock = currentBlock
+			flagHash = currentBlock.Header.PrevBlockHash
 		}
 		return nil
 	})

@@ -47,6 +47,7 @@ type ProofOfWork struct {
 	block  *Block
 	target *big.Int
 	quitSign	chan struct{}
+	isFinished	bool
 }
 
 
@@ -136,7 +137,7 @@ func NewProofOfWork(b *Block) *ProofOfWork {
 	target := big.NewInt(1)
 	target.Lsh(target, uint(256-targetBits))
 
-	pow := &ProofOfWork{b, target, make(chan struct{})}
+	pow := &ProofOfWork{b, target, make(chan struct{}), false}
 
 	return pow
 }
@@ -169,6 +170,7 @@ func (pow *ProofOfWork) Run(callback func(int64, []byte))  {
 					// found
 					fmt.Printf("find:%x\n", hash)
 					if callback != nil {
+						pow.isFinished = true
 						callback(nonce, hash[:])
 					}
 					break QUIT
@@ -209,6 +211,7 @@ func (pow *ProofOfWork) Runv2(merkleRoot []byte,callback func(int64, []byte))  {
 					// found
 					fmt.Printf("find:%x\n", hash)
 					if callback != nil {
+						pow.isFinished = true
 						callback(nonce, hash[:])
 					}
 					break QUIT
@@ -224,6 +227,9 @@ func (pow *ProofOfWork) Runv2(merkleRoot []byte,callback func(int64, []byte))  {
 
 func (pow *ProofOfWork) Stop() {
 	pow.quitSign <- struct{}{}
+}
+func (pow *ProofOfWork) IsFinished() bool {
+	return pow.isFinished
 }
 
 // NewBlock creates and returns Block

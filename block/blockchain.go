@@ -403,9 +403,10 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 func (bc *Blockchain) verifyNewBlock(block *Block){
 	blockLogger.Trace("verifying block: %v, %v", block.Header.Height, block.Header.HashString())
 	//1. verify block POW
-	fmt.Println("//1. verify block POW")
+	blockLogger.Trace("//1. verify block POW")
 
 	tree := GetLastMerkleTree()
+	blockLogger.Trace("last merkle tree: %v", tree)
 	pow_res := block.VerifyPowV2(tree);
 	if !pow_res{
 		log.Panic("block pow verify fail")
