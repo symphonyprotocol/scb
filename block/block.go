@@ -586,14 +586,21 @@ func (block *Block) VerifyCoinbase() bool{
 		}
 		
 		var coinbase_account *Account = nil
-		coinbase_account = FindAccount(changedAccounts, block.Header.Coinbase)
-		if coinbase_account == nil{
-			coinbase_account = FindAccount(newAccounts, block.Header.Coinbase)
-			if coinbase_account == nil{
-				coinbase_account = InitAccount(block.Header.Coinbase, idx)
-				newAccounts = append(newAccounts, coinbase_account)
-			}
+		coinbase_account = FindAccount(accounts, block.Header.Coinbase)
+		if coinbase_account == nil {
+			coinbase_account = InitAccount(block.Header.Coinbase, idx)
+			newAccounts = append(newAccounts, coinbase_account)
+		} else {
+			changedAccounts = append(changedAccounts, coinbase_account)
 		}
+		// coinbase_account = FindAccount(changedAccounts, block.Header.Coinbase)
+		// if coinbase_account == nil{
+		// 	coinbase_account = FindAccount(newAccounts, block.Header.Coinbase)
+		// 	if coinbase_account == nil{
+		// 		coinbase_account = InitAccount(block.Header.Coinbase, idx)
+		// 		newAccounts = append(newAccounts, coinbase_account)
+		// 	}
+		// }
 		coinbase_account.Balance += Subsidy
 		
 		return changedAccounts, newAccounts

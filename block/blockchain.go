@@ -407,7 +407,10 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 	blockLogger.Trace("//1. verify block POW")
 
 	tree := GetLastMerkleTree()
-	blockLogger.Trace("last merkle tree: %v", tree)
+	if tree != nil {
+		blockLogger.Trace("last merkle tree: %v", sutils.BytesToString(tree.Root.Hash))
+		blockLogger.Trace("-----------------")
+	}
 	pow_res := block.VerifyPowV2(tree);
 	if !pow_res{
 		log.Panic("block pow verify fail")
@@ -481,8 +484,13 @@ func(bc *Blockchain) AcceptNewPendingChain(chain *BlockChainPending){
 		block := blocks[idx]
 		accounts := GetAllAccount()
 		lastTree := GetLastMerkleTree()
+		for _, acc := range accounts {
+			blockLogger.Trace("account: %v", acc)
+		}
+		blockLogger.Trace("last tree before: %v", sutils.BytesToString(lastTree.Root.Hash))
 		changed, new := block.PreProcessAccountBalance(accounts)
 		tree, err := lastTree.UpdateTree(changed, new)
+		blockLogger.Trace("last tree updated: %v", sutils.BytesToString(tree.Root.Hash))
 		if err == nil{
 			bc.AcceptNewBlock(blocks[idx], tree)
 		}
