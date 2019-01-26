@@ -29,7 +29,7 @@ const accountCacheBucket = "account_cache"
 const pendingBlockCnt = 5
 const maxSinglePendingBlockCnt = 100
 // 挖矿奖励金
-const Subsidy = 1000000000
+const Subsidy = 100
 
 
 var(

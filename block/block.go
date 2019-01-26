@@ -16,7 +16,7 @@ import _log "log"
 import "strconv"
 import "github.com/boltdb/bolt"
 
-const targetBits = 6
+const targetBits = 8
 
 var maxNonce = int64(math.MaxInt64)
 var blockLogger = log.GetLogger("scb").SetLevel(log.TRACE)
