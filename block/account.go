@@ -124,24 +124,6 @@ func GetAccount(address string) *Account{
 
 
 func InitAccount(address string, idx int64) *Account{
-	// account := NewAccount(address, 0 , 0, 0)
-	// return account
-	// var idx int64 = 0
-
-	// if dbExists(){
-	// 	utils.View(func(tx *bolt.Tx) error {
-	// 		b := tx.Bucket([]byte(accountBucket))
-	// 		if b == nil{
-	// 			return nil
-	// 		}
-	// 		c := b.Cursor()
-	// 		for k, v := c.First(); k != nil; k, v = c.Next() {
-	// 			fmt.Printf("key=%s, value=%s\n", k, v)
-	// 			idx++
-	// 		}
-	// 		return nil
-	// 	})
-	// }
 	account := NewAccount(address, 0, 0, idx)
 	return account
 }
@@ -160,7 +142,6 @@ func NewAccount(address string, balance, nonce, index int64) *Account{
 
 func GetAllAccount() []*Account {
 	var accounts [] *Account
-
 	utils.View(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(accountBucket))
 		if b == nil{
@@ -168,18 +149,15 @@ func GetAllAccount() []*Account {
 		}
 		c := b.Cursor()
 		for k, v := c.First(); k != nil; k, v = c.Next() {
-			// fmt.Printf("key=%s, value=%s\n", k, v)
 			account := DeserializeAccount(v)
-			accounts = append(accounts, account)
+			if account.Balance > 0{
+				accounts = append(accounts, account)
+			}
 		}
 		return nil
 	})
-	// sort.Slice(accounts,func(i, j int) bool{
-	// 	return accounts[i].Address < accounts[j].Address
-	// })
 	return accounts
 }
-
 
 func FindAccount(accounts []*Account , address string) *Account{
 	for _, account := range accounts{

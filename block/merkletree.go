@@ -5,17 +5,18 @@ import (
 	"crypto/sha256"
 	"errors"
 	"fmt"
-	"encoding/gob"
+	// "encoding/gob"
+	"github.com/symphonyprotocol/sutil/utils"
 	"math"
 	"log"
 )
 
-type Content interface {
-	CalculateHash() ([]byte, error)
-	Equals(other Content) (bool, error)
-	IsDup()(bool, error)
-	SetDup(bool) Content
-}
+// type Content interface {
+// 	CalculateHash() ([]byte, error)
+// 	Equals(other Content) (bool, error)
+// 	IsDup()(bool, error)
+// 	SetDup(bool) Content
+// }
 
 type MerkleTree struct {
 	Root       *Node
@@ -32,7 +33,7 @@ type Node struct {
 	// 是否是虚拟节点, 右子树构建时候除了第一个叶子节点外所有节点为虚拟
 	virtual bool
 	Hash   []byte
-	C      Content
+	C      BlockContent
 }
 
 type NodeShadow struct{
@@ -40,32 +41,33 @@ type NodeShadow struct{
 	Dup bool
 	Virtual bool
 	Hash [] byte
-	C Content
+	C BlockContent
 }
 
 func (n *NodeShadow) Serialize() []byte {
-	var result bytes.Buffer
-	encoder := gob.NewEncoder(&result)
+	// var result bytes.Buffer
+	// encoder := gob.NewEncoder(&result)
 
-	err := encoder.Encode(n)
-	if err != nil {
-		blockLogger.Error("Failed to serialize the node: %v", err)
-		panic(err)
-	}
-	resbytes  := result.Bytes()
-	return resbytes
+	// err := encoder.Encode(n)
+	// if err != nil {
+	// 	blockLogger.Error("Failed to serialize the node: %v", err)
+	// 	panic(err)
+	// }
+	// resbytes  := result.Bytes()
+	// return resbytes
+	return utils.ObjToBytes(n)
 }
 
 func DeserializeNode(d []byte) *NodeShadow {
-	var node NodeShadow
+	var node NodeShadow = NodeShadow{}
 
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&node)
-	if err != nil {
-		blockLogger.Error("Failed to deserialize the node: %v", err)
-		return nil
-	}
-
+	// decoder := gob.NewDecoder(bytes.NewReader(d))
+	// err := decoder.Decode(&node)
+	// if err != nil {
+	// 	blockLogger.Error("Failed to deserialize the node: %v", err)
+	// 	return nil
+	// }
+	utils.BytesToObj(d, &node)
 	return &node
 }
 
@@ -104,7 +106,7 @@ func (n *Node) calculateNodeHash() ([]byte, error) {
 	return h.Sum(nil), nil
 }
 
-func NewTree(cs []Content) (*MerkleTree, error) {
+func NewTree(cs []BlockContent) (*MerkleTree, error) {
 	root, leafs, err := buildWithContent(cs)
 	if err != nil {
 		return nil, err
@@ -117,7 +119,7 @@ func NewTree(cs []Content) (*MerkleTree, error) {
 	return t, nil
 }
 
-func buildWithContent(cs []Content) (*Node, []*Node, error) {
+func buildWithContent(cs []BlockContent) (*Node, []*Node, error) {
 	if len(cs) == 0 {
 		return nil, nil, errors.New("error: cannot construct tree with no content")
 	}
@@ -189,7 +191,7 @@ func (m *MerkleTree) MerkleRoot() []byte {
 }
 
 func (m *MerkleTree) RebuildTree() error {
-	var cs []Content
+	var cs []BlockContent
 	for _, c := range m.Leafs {
 		cs = append(cs, c.C)
 	}
@@ -203,7 +205,7 @@ func (m *MerkleTree) RebuildTree() error {
 	return nil
 }
 
-func (m *MerkleTree) RebuildTreeWith(cs []Content) error {
+func (m *MerkleTree) RebuildTreeWith(cs []BlockContent) error {
 	root, leafs, err := buildWithContent(cs)
 	if err != nil {
 		return err
@@ -227,7 +229,7 @@ func (m *MerkleTree) VerifyTree() (bool, error) {
 	return false, nil
 }
 
-func (m *MerkleTree) VerifyContent(content Content) (bool, error) {
+func (m *MerkleTree) VerifyContent(content BlockContent) (bool, error) {
 	for _, l := range m.Leafs {
 		ok, err := l.C.Equals(content)
 		if err != nil {
@@ -297,7 +299,7 @@ func GetNodeBrother(node *Node) *Node{
 }
 
 //通过回溯兄弟节点获取Content的证明路径
-func(m *MerkleTree) GetContentPath(content Content) ([][]byte, error){
+func(m *MerkleTree) GetContentPath(content BlockContent) ([][]byte, error){
 	var paths [][] byte
 
 	var node *Node
@@ -415,7 +417,7 @@ func (m *MerkleTree) FindInsertPoint() *Node{
 	1. 若能找到插入节点, 更新此插入节点的content, 并更新回溯路径
 	2. 若未能找到插入点，构建当前merkle 右子树 并与当前树合并
 */
-func (m *MerkleTree) InsertContent(content Content) *MerkleTree{
+func (m *MerkleTree) InsertContent(content BlockContent) *MerkleTree{
 	position := m.FindInsertPoint()
 	if position != nil{
 		paths, _ := m.GetNodePath(position)
@@ -424,7 +426,7 @@ func (m *MerkleTree) InsertContent(content Content) *MerkleTree{
 		return m
 	}else{
 			leafCnt := m.LeafCount()
-			var contents []Content
+			var contents []BlockContent
 
 			contents = append(contents, content)
 			for i:=int64(0); i< leafCnt-1; i++{
@@ -438,7 +440,7 @@ func (m *MerkleTree) InsertContent(content Content) *MerkleTree{
 }
 
 //根据证明路径更新节点
-func(m *MerkleTree)UpdateNode(node *Node, content Content, paths[][]byte){
+func(m *MerkleTree)UpdateNode(node *Node, content BlockContent, paths[][]byte){
 	node.C = content
 	node.dup = false
 	node.virtual = false
@@ -491,15 +493,18 @@ func(m *MerkleTree)BreadthFirstSerialize() []byte {
 	}
 
 	//把所有节点序列化
-	var result2 bytes.Buffer
-	encoder := gob.NewEncoder(&result2)
 
-	err := encoder.Encode(result)
-	if err == nil{
-		return result2.Bytes()
-	}
+	return utils.ObjToBytes(result)
 
-	return nil
+	// var result2 bytes.Buffer
+	// encoder := gob.NewEncoder(&result2)
+
+	// err := encoder.Encode(result)
+	// if err == nil{
+	// 	return result2.Bytes()
+	// }
+
+	// return nil
 }
 
 //反序列化数据为merkle树
@@ -507,12 +512,19 @@ func DeserializeNodeFromData(d []byte) *MerkleTree {
 
 	//还原所有节点二进制数据
 	var data [][]byte
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&data)
+
+	err := utils.BytesToObj(d, &data)
 	if err != nil {
 		blockLogger.Error("Failed to deserialize: %v", err)
 		return nil
-	}	
+	}
+
+	// decoder := gob.NewDecoder(bytes.NewReader(d))
+	// err := decoder.Decode(&data)
+	// if err != nil {
+	// 	blockLogger.Error("Failed to deserialize: %v", err)
+	// 	return nil
+	// }	
 
 	//根据节点还原树
 	var tree *MerkleTree
@@ -591,7 +603,7 @@ func newNodeFromData(data [] byte) *Node {
 
 func(m *MerkleTree) UpdateTree(changedAccounts []*Account, newAccounts []*Account) (*MerkleTree, error){
 	if m == nil{
-		var contents []Content
+		var contents []BlockContent
 		for _, account := range newAccounts {
 			account_bytes := account.Serialize()
 			contents = append(contents, BlockContent{
@@ -632,3 +644,16 @@ func(m *MerkleTree) UpdateTree(changedAccounts []*Account, newAccounts []*Accoun
 	return m, nil
 }
 
+func (m *MerkleTree) DeserializeAccount() []*Account{
+	var accounts [] *Account
+	leafs := m.Leafs
+
+	for _, leaf := range leafs{
+		if leaf.dup || leaf.virtual{
+			continue
+		}
+		account := DeserializeAccount(leaf.C.X)
+		accounts = append(accounts, account)
+	}
+	return accounts
+}

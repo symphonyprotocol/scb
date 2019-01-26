@@ -10,18 +10,27 @@ import (
 	"fmt"
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"github.com/symphonyprotocol/scb/utils"
+	sutils "github.com/symphonyprotocol/sutil/utils"
 	// "encoding/binary"
 	"strconv"
 )
 
 const blocksBucket = "blocks"
+const blockPendingBucket = "block_pending"
+const blockHeightHashMapBucket = "block_hash_map"
+const blockPendingSingleBucket = "block_pending_single"
+const blocksIndexBucket = "blocks_indexes"
+const blocksIndex_heightPrefix = "h"
 const accountBucket = "account"
 const transactionBucket = "transaction_pool"
 const transactionMapBucket = "transaction"
 const stateTreeBucket = "statetree"
 const accountCacheBucket = "account_cache"
+const pendingBlockCnt = 5
+const maxSinglePendingBlockCnt = 100
 // 挖矿奖励金
 const Subsidy = 100
+
 
 var(
 	CURRENT_USER, _ = osuser.Current()
@@ -32,10 +41,6 @@ type Blockchain struct {
 	tip []byte
 	// db  *bolt.DB
 }
-
-// func  (bc *Blockchain) GetDB() *bolt.DB{
-// 	return bc.db
-// }
 
 
 // BlockchainIterator is used to iterate over blockchain blocks
@@ -71,6 +76,7 @@ func (i *BlockchainIterator) Next() *Block {
 	i.currentHash = block.Header.PrevBlockHash
 	return block
 }
+
 
 func dbExists() bool {
 	if _, err := os.Stat(dbFile); os.IsNotExist(err) {
@@ -110,7 +116,6 @@ func LoadBlockchain() *Blockchain {
 	bc := Blockchain{tip}
 	return &bc
 }
-
 // new empty blockchain, just the db initialized.
 func CreateEmptyBlockchain() *Blockchain {
 	if dbExists() {
@@ -127,6 +132,21 @@ func CreateEmptyBlockchain() *Blockchain {
 		}
 
 		_, err = tx.CreateBucket([]byte(blocksBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blockPendingBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blockPendingSingleBucket))
+		if err != nil {
+			log.Panic(err)
+		}
+
+		_, err = tx.CreateBucket([]byte(blocksIndexBucket))
 		if err != nil {
 			log.Panic(err)
 		}
@@ -168,11 +188,10 @@ func CreateBlockchain(wif string, callback func(*Blockchain)) {
 	privateKey, publickey := elliptic.PrivKeyFromBytes(elliptic.S256(), prikey)
 	address := publickey.ToAddressCompressed()
 	fmt.Printf("address from wif %v\n", address)
-	account := InitAccount(address, 0)
 
 	// var tip []byte
 
-	trans := NewTransaction(account.Nonce, Subsidy, "", address)
+	trans := NewTransaction(0, Subsidy, "", address)
 	trans = trans.Sign(privateKey)
 
 	bc := CreateEmptyBlockchain()
@@ -196,6 +215,7 @@ func(bc *Blockchain) SaveTransaction(trans *Transaction){
 		return nil
 	})
 }
+
 func(bc *Blockchain) DeleteTransaction(trans *Transaction){
 	utils.Update(func(tx *bolt.Tx) error {
 		b := tx.Bucket([]byte(transactionBucket))
@@ -248,47 +268,45 @@ func(bc *Blockchain) FindUnpackTransaction(address string) []* Transaction{
 	return transactions
 }
 
-func (bc *Blockchain) FindAllUnpackTransaction() map[string] []* Transaction {
-	var trans_map map[string] []* Transaction
-	trans_map = make(map[string] []* Transaction)
-
-	utils.View(func(tx *bolt.Tx) error {
-		b := tx.Bucket([]byte(transactionBucket))
-		c := b.Cursor()
-
-		for k, v := c.First(); k != nil; k, v = c.Next() {
-			// fmt.Printf("key=%s, value=%s\n", k, v)
-			trans := DeserializeTransction(v)
-			trans_s, ok := trans_map [trans.From]
-			if ok{
-				trans_s = append(trans_s, trans)
-				trans_map[trans.From] = trans_s
-			}else{
-				trans_map[trans.From] = []* Transaction{trans}
-			}
-		}
-		return nil
-	})
-	return trans_map
-}
-
 
 func GetBlockHeight() int64{
-	var lastBlock Block
+	// var lastBlock Block
+	var height int64 = -1
 	if dbExists(){
 		utils.View(func(tx *bolt.Tx) error{
 			bucket := tx.Bucket([]byte(blocksBucket))
 			blockhash := bucket.Get([]byte ("l"))
 			blockdata := bucket.Get(blockhash)
 			if len(blockdata) > 0{
-				lastBlock = *DeserializeBlock(blockdata)
+				lastBlock := *DeserializeBlock(blockdata)
+				height = lastBlock.Header.Height
+			}else{
+				height = -1
 			}
 			return nil
 		})
 	}else{
 		return 0
 	}
-	return lastBlock.Header.Height
+	return height
+}
+
+func GetLastBlock() *Block{
+	var lastBlock *Block
+	if dbExists(){
+		utils.View(func(tx *bolt.Tx) error{
+			bucket := tx.Bucket([]byte(blocksBucket))
+			blockhash := bucket.Get([]byte ("l"))
+			blockdata := bucket.Get(blockhash)
+			if len(blockdata) > 0{
+				lastBlock = DeserializeBlock(blockdata)
+			}
+			return nil
+		})
+	}else{
+		return nil
+	}
+	return lastBlock
 }
 
 func(bc *Blockchain) GetBlock(height int64) *Block{
@@ -326,6 +344,20 @@ func (bc *Blockchain) GetBlockByHash(hash []byte) *Block {
 	return the_block
 }
 
+func (bc *Blockchain) GetBlockByHeight(height int64) *Block {
+	var blockHash []byte
+	if dbExists() {
+		utils.View(func(tx *bolt.Tx) error {
+			bucket := tx.Bucket([]byte(blocksIndexBucket))
+			the_bytes := bucket.Get(getHeightKeyForHash(height))
+			blockHash = make([]byte, len(the_bytes))
+			copy(blockHash, the_bytes)
+			return nil
+		})
+	}
+
+	return bc.GetBlockByHash(blockHash)
+}
 
 // MineBlock mines a new block with the provided transactions
 func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callback func(* Block, *MerkleTree)) *ProofOfWork {
@@ -370,25 +402,33 @@ func (bc *Blockchain) MineBlock(wif string, transactions []*Transaction, callbac
 }
 
 func (bc *Blockchain) verifyNewBlock(block *Block){
+	blockLogger.Trace("verifying block: %v, %v, prev: %v", block.Header.Height, block.Header.HashString(), sutils.BytesToString(block.Header.PrevBlockHash))
 	//1. verify block POW
-	fmt.Println("//1. verify block POW")
-	if pow_res := block.VerifyPow(true); !pow_res{
+	blockLogger.Trace("//1. verify block POW")
+
+	tree := GetLastMerkleTree()
+	if tree != nil {
+		blockLogger.Trace("last merkle tree: %v", sutils.BytesToString(tree.Root.Hash))
+		blockLogger.Trace("-----------------")
+	}
+	pow_res := block.VerifyPowV2(tree);
+	if !pow_res{
 		log.Panic("block pow verify fail")
 	}
 	//2. verfiy transactions
-	fmt.Println("//2. verfiy transactions")
+	blockLogger.Trace("//2. verfiy transactions")
 	if trans_res := block.VerifyTransaction(); !trans_res{
 		log.Panic("block transaction verify fail")
 	}
 
 	//3. verify block signature
-	fmt.Println("//3. verify block signature")
+	blockLogger.Trace("//3. verify block signature")
 	if coinbase_res := block.VerifyCoinbase(); !coinbase_res{
 		log.Panic("block signature verify fail")
 	}
 
 	//4. verify block merkle root hash
-	fmt.Println("//4. verify block merkle root hash")
+	blockLogger.Trace("//4. verify block merkle root hash")
 	if merkleRes := block.VerifyMerkleHash(); merkleRes == false{
 		log.Panic("merkle root hash verify fail")
 	}
@@ -396,6 +436,7 @@ func (bc *Blockchain) verifyNewBlock(block *Block){
 
 
 func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
+	blockLogger.Trace("accepting new block")
 	var blockchain *Blockchain
 
 	if len(bc.tip) != 0 {
@@ -403,20 +444,27 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	}else{
 		blockchain = bc
 	}
+	blockLogger.Trace("blockchain loaded")
 	//无冲突
-	if existBlock := bc.GetBlock(block.Header.Height); existBlock == nil{
+	if existBlock := bc.GetBlockByHash(block.Header.Hash); existBlock == nil{
+		blockLogger.Trace("no conflict")
 		blockchain.verifyNewBlock(block)
+		blockLogger.Trace("block verified")
 		
 		//2. verify block hash
 		if block_hash_res := bc.VerifyBlockHash(block);!block_hash_res{
 			log.Panic("block hash fail")
 		}
 
+		blockLogger.Trace("block hash verified")
+
 		blockchain.CombineBlock(block)
+		blockLogger.Trace("block combined")
 		postAcceptBlock(block, st)
+		blockLogger.Trace("post accept block done")
 
 	}else{
-		fmt.Println("block already exists, check timestamp")
+		blockLogger.Trace("block already exists, check timestamp")
 		if block.Header.Timestamp >= existBlock.Header.Timestamp{
 			fmt.Errorf("block exist and this block is later then exist one")
 		}else{
@@ -429,31 +477,33 @@ func(bc *Blockchain) AcceptNewBlock(block *Block, st *MerkleTree){
 	}
 }
 
-func postAcceptBlock(block *Block, st *MerkleTree){
-	accounts := GetAllAccount()
-	change_accounts, new_accounts := block.PreProcessAccountBalance(accounts)
+func(bc *Blockchain) AcceptNewPendingChain(chain *BlockChainPending){
+	blocks := chain.ConvertPendingBlockchain2Blocks()
 	
-	for _, v := range change_accounts{
-		utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(accountBucket))
-			accountbytes := bucket.Get([]byte(v.Address))
-			if accountbytes != nil{
-				bucket.Delete([]byte(v.Address))
-				bucket.Put([]byte(v.Address), v.Serialize())
-			}
-			return nil
-		})
+	for idx := len(blocks)-1 ; idx>=0 ; idx--{
+		block := blocks[idx]
+		accounts := GetAllAccount()
+		lastTree := GetLastMerkleTree()
+		for _, acc := range accounts {
+			blockLogger.Trace("account: %v", acc)
+		}
+		blockLogger.Trace("last tree before: %v", sutils.BytesToString(lastTree.Root.Hash))
+		changed, new := block.PreProcessAccountBalance(accounts)
+		tree, err := lastTree.UpdateTree(changed, new)
+		blockLogger.Trace("last tree updated: %v", sutils.BytesToString(tree.Root.Hash))
+		if err == nil{
+			bc.AcceptNewBlock(blocks[idx], tree)
+		}
 	}
-	for _, v := range new_accounts{
-		utils.Update(func(tx *bolt.Tx) error {
-			bucket := tx.Bucket([]byte(accountBucket))
-			bucket.Put([]byte(v.Address), v.Serialize())
-			return nil
-		})
-	}
+	ClearPendingPool()
+}
 
+
+func postAcceptBlock(block *Block, st *MerkleTree){
+	block.SaveAccounts()
 	//save state tree
 	height_str := strconv.FormatInt(block.Header.Height, 10)
+	
 	utils.Update(func(tx *bolt.Tx) error {
 		bucket := tx.Bucket([]byte(stateTreeBucket))
 		if bucket != nil{
@@ -465,76 +515,10 @@ func postAcceptBlock(block *Block, st *MerkleTree){
 		}
 		return nil
 	})
+	blockLogger.Trace("state tree saved")
 	
-	//save transaction
-	for _, trans := range block.Transactions{
-		utils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(transactionMapBucket))
-			err := b.Put(trans.ID, block.Header.Hash)
-			if err != nil {
-				log.Panic(err)
-			}
-			return nil
-		})
-	}
-
-	//delete packed transaction
-	for _, trans := range block.Transactions{
-		utils.Update(func(tx *bolt.Tx) error {
-			b := tx.Bucket([]byte(transactionBucket))
-			err := b.Delete(trans.ID)
-			if err != nil {
-				// log.Panic(err)
-				fmt.Printf("an error when delete:%v", err.Error)
-			}
-			return nil
-		})
-	}
-
-
-		// // reward miner
-		// if block.Header.Height > 0{
-		// 	// ChangeBalance(block.Header.Coinbase, Subsidy)
-		// }
-		
-		// //save transaction
-		// for _, trans := range block.Transactions{
-		// 	utils.Update(func(tx *bolt.Tx) error {
-		// 		b := tx.Bucket([]byte(transactionMapBucket))
-		// 		err := b.Put(trans.ID, block.Header.Hash)
-		// 		if err != nil {
-		// 			log.Panic(err)
-		// 		}
-		// 		return nil
-		// 	})
-		// }
-
-		// //delete packed transaction
-		// for _, trans := range block.Transactions{
-		// 	utils.Update(func(tx *bolt.Tx) error {
-		// 		b := tx.Bucket([]byte(transactionBucket))
-		// 		err := b.Delete(trans.ID)
-		// 		if err != nil {
-		// 			// log.Panic(err)
-		// 			fmt.Printf("an error when delete:%v", err.Error)
-		// 		}
-		// 		return nil
-		// 	})
-		// }
-		
-		// //change balance
-		// for _, v := range block.Transactions{
-		// 	if v.From == ""{
-		// 		// 创世交易
-		// 		// ChangeBalance(v.To, v.Amount)
-		// 		// NoncePlus(v.To)
-		// 	}else{
-		// 		// ChangeBalance(v.From, 0 - v.Amount)
-		// 		// ChangeBalance(v.To, v.Amount)
-		// 		// NoncePlus(v.From)
-		// 	}
-		// }
-
+	block.SaveTransactions()
+	block.DeleteTransactions()
 }
 
 func (bc *Blockchain) CombineBlock(block *Block){
@@ -550,6 +534,12 @@ func (bc *Blockchain) CombineBlock(block *Block){
 			log.Panic(err)
 		}
 		bc.tip = block.Header.Hash
+
+		b = tx.Bucket([]byte(blocksIndexBucket))
+		err = b.Put(getHeightKeyForHash(block.Header.Height), block.Header.Hash)
+		if err != nil {
+			log.Panic(err)
+		}
 		// fmt.Print(block.Header.Hash)
 		return nil
 	})
@@ -582,10 +572,10 @@ func (bc *Blockchain) VerifyBlockHash(b *Block) bool{
 	
 	hashCompRes := bytes.Compare(b.Header.PrevBlockHash, lastHash)
 
-	hashVerify := b.VerifyHash()
+	// hashVerify := b.VerifyHash()
 
 	fmt.Printf("last height: %v, header height:%v\n", lastHeight, b.Header.Height)
-	if hashCompRes == 0 && hashVerify && lastHeight + 1 == b.Header.Height{
+	if hashCompRes == 0 && lastHeight + 1 == b.Header.Height{
 		return true
 	}
 	return false
@@ -604,6 +594,10 @@ func (bc *Blockchain) HasBlock(hash []byte) *Block {
 	return block
 }
 
+func getHeightKeyForHash(height int64) []byte {
+	return []byte(fmt.Sprintf("%v%v", blocksIndex_heightPrefix, height))
+}
+
 // revert block chain to specific height
 func RevertTo(Height int64){
 	chain := LoadBlockchain()
@@ -618,6 +612,8 @@ func RevertTo(Height int64){
 			utils.Update(func(tx *bolt.Tx) error {
 				bucket := tx.Bucket([]byte(blocksBucket))
 				bucket.Delete(b.Header.Hash)
+				bucket = tx.Bucket([]byte(blocksIndexBucket))
+				bucket.Delete(getHeightKeyForHash(b.Header.Height))
 				return nil
 			})
 			// remove reward miner
@@ -666,7 +662,6 @@ func RevertTo(Height int64){
 	}
 }
 
-
 func PrintChain() {
 	bc := LoadBlockchain()
 	bci := bc.Iterator()
@@ -675,14 +670,23 @@ func PrintChain() {
 		b := bci.Next()
 
 		fmt.Printf("Previous hash: %x\n", b.Header.PrevBlockHash)
-		fmt.Printf("Hash: %x\n", b.Header.Hash)
+		fmt.Printf("Hash: %v\n", b.Header.Hash)
 		fmt.Printf("CreateAt: %v\n", b.Header.Timestamp)
 		fmt.Printf("Height:%d\n", b.Header.Height)
 		fmt.Printf("Coinbase:%v\n", b.Header.Coinbase)
 		fmt.Printf("merkle Root:%v\n", b.Header.MerkleRootHash)
 		fmt.Printf("account state Root:%v\n", b.Header.MerkleRootAccountHash)
-		// pow := NewProofOfWork(b)
-		fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPow(false)))
+
+		var lastStateTree *MerkleTree
+		lastHeight := b.Header.Height - 1
+		if lastHeight >= 0{
+			lastStateTree = GetMerkleTreeByHeight(lastHeight)
+		}
+		if lastStateTree == nil{
+			fmt.Print("PoW can not be verified , because no state tree can be loaded\n")
+		}else{
+			fmt.Printf("PoW: %s\n", strconv.FormatBool(b.VerifyPowV2(lastStateTree)))
+		}
 		fmt.Printf("Signature Verify:%v \n", b.VerifyCoinbase())
 		fmt.Println()
 

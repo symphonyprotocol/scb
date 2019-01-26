@@ -2,16 +2,15 @@ package block
 
 import (
 	"github.com/symphonyprotocol/sutil/utils"
-	"encoding/gob"
-	"bytes"
+	// "encoding/gob"
+	// "bytes"
 	"log"
 	"github.com/symphonyprotocol/sutil/elliptic"
 	"crypto/sha256"
-	// "github.com/boltdb/bolt"
-	// scbutils "github.com/symphonyprotocol/scb/utils"
+	"github.com/boltdb/bolt"
+	scbutils "github.com/symphonyprotocol/scb/utils"
 	// "encoding/binary"
 )
-
 
 // Transaction represents a Bitcoin transaction
 type Transaction struct {
@@ -25,26 +24,28 @@ type Transaction struct {
 
 // Serialized Transaction
 func (tx Transaction) Serialize() []byte {
-	var encoded bytes.Buffer
 
-	enc := gob.NewEncoder(&encoded)
-	err := enc.Encode(tx)
-	if err != nil {
-		log.Panic(err)
-	}
+	return utils.ObjToBytes(tx)
+	// var encoded bytes.Buffer
+	// enc := gob.NewEncoder(&encoded)
+	// err := enc.Encode(tx)
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
 
-	return encoded.Bytes()
+	// return encoded.Bytes()
 }
 //  Deserializes Transaction
 func DeserializeTransction(d []byte) *Transaction {
-	var transaction Transaction
+	var transaction Transaction = Transaction{}
 
-	decoder := gob.NewDecoder(bytes.NewReader(d))
-	err := decoder.Decode(&transaction)
-	if err != nil {
-		log.Panic(err)
-	}
-
+	// decoder := gob.NewDecoder(bytes.NewReader(d))
+	// err := decoder.Decode(&transaction)
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
+	
+	utils.BytesToObj(d, &transaction)
 	return &transaction
 }
 
@@ -75,15 +76,16 @@ func (tx *Transaction) Verify() bool{
 }
 
 func (tx *Transaction) SetID() {
-	var encoded bytes.Buffer
-	var hash [32]byte
+	// var encoded bytes.Buffer
+	// var hash [32]byte
 
-	enc := gob.NewEncoder(&encoded)
-	err := enc.Encode(tx)
-	if err != nil {
-		log.Panic(err)
-	}
-	hash = sha256.Sum256(encoded.Bytes())
+	// enc := gob.NewEncoder(&encoded)
+	// err := enc.Encode(tx)
+	// if err != nil {
+	// 	log.Panic(err)
+	// }
+	bytes := tx.Serialize()
+	hash := sha256.Sum256(bytes)
 	tx.ID = hash[:]
 }
 
@@ -149,12 +151,11 @@ func SendTo(from, to string, amount int64, wif string) *Transaction {
 	return trans
 }
 
-func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
-	bc := LoadBlockchain()
-
+func Mine(wif string, callback func(*Block), processedSign func()) *ProofOfWork {
+	// bc := LoadBlockchain()
+	bcp := LoadPendingPool()
 	var transactions []* Transaction
-
-	unpacktransactions := bc.FindAllUnpackTransaction()
+	unpacktransactions := FindAllUnpackTransaction()
 
 
 	if len(unpacktransactions) > 0{
@@ -164,18 +165,50 @@ func Mine(wif string, callback func([]* Transaction)) *ProofOfWork {
 		}
 
 	}else{
-		log.Panic("no transaction can be mine")
+		// log.Panic("no transaction can be mine")
+		return nil
 	}
 
-	provework := bc.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
-
-		bc.AcceptNewBlock(block, st)
+	provework := bcp.MineBlock(wif, transactions, func(block *Block, st *MerkleTree) {
 		if callback != nil {
-			callback(transactions)
+			callback(block)
+		}
+		pendingblockChain := bcp.AcceptBlock(block)
+		if pendingblockChain != nil{
+			bc := LoadBlockchain()
+			bc.AcceptNewPendingChain(pendingblockChain)
+		}
+		block.DeleteTransactions()
+		blockLogger.Trace("Tx cleared")
 
+		if processedSign != nil {
+			processedSign()
 		}
 	})
 
 	return provework
 }
 
+func FindAllUnpackTransaction() map[string] []* Transaction {
+	var trans_map map[string] []* Transaction
+	trans_map = make(map[string] []* Transaction)
+
+	scbutils.View(func(tx *bolt.Tx) error {
+		b := tx.Bucket([]byte(transactionBucket))
+		c := b.Cursor()
+
+		for k, v := c.First(); k != nil; k, v = c.Next() {
+			// fmt.Printf("key=%s, value=%s\n", k, v)
+			trans := DeserializeTransction(v)
+			trans_s, ok := trans_map [trans.From]
+			if ok{
+				trans_s = append(trans_s, trans)
+				trans_map[trans.From] = trans_s
+			}else{
+				trans_map[trans.From] = []* Transaction{trans}
+			}
+		}
+		return nil
+	})
+	return trans_map
+}
