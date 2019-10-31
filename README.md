@@ -36,3 +36,6 @@ pywL8LjxA2rjzbL7qvFqjgbNVQ5
 ```
 ./scb printchain
 ```
+## module support
+
+* In Progress
